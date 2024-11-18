@@ -16,8 +16,8 @@ mkdir /io/tmp
 cd /io/tmp
 
 # Extract and enter source
-git clone https://github.com/tmaklin/kbo.git
-cd kbo
+git clone https://github.com/tmaklin/kbo-cli.git
+cd kbo-cli
 git checkout ${VER}
 
 mkdir -p .cargo
