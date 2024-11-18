@@ -1,5 +1,5 @@
 # kbo-cli
-Command-line interface for the [kbo](https://docs.rs/kbo) local aligner.
+Command-line interface for the [kbo](https://github.com/tmaklin/kbo) local aligner.
 
 Documentation is available at [https://docs.rs/kbo](https://docs.rs/kbo).
 
