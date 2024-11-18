@@ -1,0 +1,30 @@
+[package]
+name = "kbo-cli"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.0"
+authors = ["Tommi Mäklin <tommi@maklin.fi>"]
+description = "Command-line interface to the kbo local aligner."
+readme = "README.md"
+homepage = "https://github.com/tmaklin/kbo-cli"
+repository = "https://github.com/tmaklin/kbo-cli"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "kbo"
+path = "src/main.rs"
+
+[dependencies]
+## core
+clap = { version = "4", features = ["derive"]}
+kbo = "0.4.0"
+log = "0.4.20"
+needletail = { version = "0.6.0", default-features = false, features = ["flate2"] }
+rayon = "1"
+sbwt = "0.3.4"
+stderrlog = "0.6.0"
+
+[profile.release]
+strip = false
+lto = true
+codegen-units = 1
