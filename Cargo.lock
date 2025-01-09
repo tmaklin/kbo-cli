@@ -549,9 +549,9 @@ dependencies = [
 
 [[package]]
 name = "kbo"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da3ddb0d4122e1eea47cec55a2f07eb00839cd59133a28731fe0101c2d0dd6a"
+checksum = "7a7f41e50015fc1e21ec1a1d2d76a89facb6d556e35a1159f64f325e2bc67c46"
 dependencies = [
  "embed-doc-image",
  "sbwt",
@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "kbo-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "kbo",
