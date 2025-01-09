@@ -1,6 +1,6 @@
 [package]
 name = "kbo-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.77.0"
 authors = ["Tommi Mäklin <tommi@maklin.fi>"]
@@ -17,7 +17,7 @@ path = "src/main.rs"
 [dependencies]
 ## core
 clap = { version = "4", features = ["derive"]}
-kbo = "0.4.0"
+kbo = "0.4.1"
 log = "0.4.20"
 needletail = { version = "0.6.0", default-features = false, features = ["flate2"] }
 rayon = "1"
