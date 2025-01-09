@@ -31,7 +31,7 @@ jobs:
 
   build_macOS-x86_64:
     runs-on: ubuntu-latest
-    container: ghcr.io/shepherdjerred/macos-cross-compiler:42867bf829f616760568f4969eb04d9ea99ce10b272b512bc669f9c1fddd40f6
+    container: ghcr.io/shepherdjerred/macos-cross-compiler@sha256:42867bf829f616760568f4969eb04d9ea99ce10b272b512bc669f9c1fddd40f6
     steps:
       - name: Install wget and git
         id: install-wget
@@ -65,7 +65,7 @@ jobs:
 
   build_macOS-aarch64:
     runs-on: ubuntu-latest
-    container: ghcr.io/shepherdjerred/macos-cross-compiler:42867bf829f616760568f4969eb04d9ea99ce10b272b512bc669f9c1fddd40f6
+    container: ghcr.io/shepherdjerred/macos-cross-compiler@sha256:42867bf829f616760568f4969eb04d9ea99ce10b272b512bc669f9c1fddd40f6
     steps:
       - name: Install wget and git
         id: install-wget
