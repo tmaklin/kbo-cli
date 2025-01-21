@@ -4,10 +4,19 @@ Command-line interface for the [kbo](https://github.com/tmaklin/kbo) local align
 Documentation is available at [https://docs.rs/kbo](https://docs.rs/kbo).
 
 ## Installation
-### Cargo
+### Download
+Binaries are available from the [Releases page](https://github.com/tmaklin/kbo-cli/releases).
+
+### From bioconda
+Run
+``` text
+conda install -c bioconda -y kbo-cli
+```
+
+### Using cargo
 Run `cargo install kbo-cli`.
 
-### From source
+### Compile from source
 Run
 ``` text
 git clone https://github.com/tmaklin/kbo-cli
