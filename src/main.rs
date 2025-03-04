@@ -94,14 +94,16 @@ fn write_vcf_header<W: Write>(f: &mut W,
 ) -> Result<vcf::Header, std::io::Error> {
     let mut writer = vcf::Writer::new(f);
     let mut header_builder = vcf::Header::builder();
-    for (name, length) in contig_info.iter() {
+    for (contig_header, length) in contig_info.iter() {
         let record = Map::<Contig>::builder()
             .set_length(**length)
             .build();
 
+        let mut header_contents = contig_header.split_whitespace();
+        let contig_name = header_contents.next().expect("Contig name");
         header_builder = header_builder.add_contig(
-            name.parse().expect("Could not add contig to header"),
-            record.expect("Valid contig"),
+            contig_name.parse().expect("Query contig name in header"),
+            record.expect("Record of type vcf::header::record::value::map::Contig"),
         );
 
     };
@@ -131,7 +133,7 @@ fn write_vcf<W: Write>(f: &mut W,
                        header: &vcf::Header,
                        ref_seq: &[&u8],
                        mapped_seq: &[u8],
-                       contig_name: &str
+                       contig_header: &str
 ) -> Result<(), std::io::Error> {
     let mut writer = vcf::Writer::new(f);
 
@@ -147,7 +149,8 @@ fn write_vcf<W: Write>(f: &mut W,
         let (genotype, alt_base) = if mapped_base == **ref_base {
             (String::from("0"), u8_to_base(mapped_base))
         } else if mapped_base == b'-' {
-            variant = true;
+            // Only output changes that can be resolved
+            variant = false;
             (String::from("."), u8_to_base(b'-'))
         } else {
             variant = true;
@@ -159,6 +162,10 @@ fn write_vcf<W: Write>(f: &mut W,
             let ref_allele = u8_to_base(**ref_base);
             let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String(genotype))]]);
             let alt_allele = vec![Allele::Bases(vec![alt_base])];
+
+            let mut header_contents = contig_header.split_whitespace();
+            let contig_name = header_contents.next().expect("Contig name");
+
             let record = vcf::Record::builder()
                 .set_chromosome(
                     contig_name
