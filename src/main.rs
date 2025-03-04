@@ -14,28 +14,15 @@
 use std::io::Write;
 
 use clap::Parser;
-use chrono::offset::Local;
 use log::info;
 use needletail::Sequence;
 use needletail::parser::SequenceRecord;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 
-// TODO clean up
-use noodles_vcf::{
-    self as vcf,
-    header::record::value::{map::Contig, Map},
-    header::record::value::Collection,
-    record::{
-        alternate_bases::Allele,
-        genotypes::{keys::key, sample::Value, Keys},
-        reference_bases::Base,
-        AlternateBases, Genotypes, Position,
-    },
-};
-
 // Command-line interface
 mod cli;
+mod vcf_writer;
 
 // Given a needletail parser, reads the next contig sequence
 fn read_from_fastx_parser(
@@ -74,115 +61,6 @@ fn init_log(log_max_level: usize) {
 	.timestamp(stderrlog::Timestamp::Off)
 	.init()
 	.unwrap();
-}
-
-/// [`u8`] representation used elsewhere to [`noodles_vcf::record::reference_bases::Base`]
-#[inline]
-fn u8_to_base(ref_base: u8) -> Base {
-    match ref_base {
-        b'A' => Base::A,
-        b'C' => Base::C,
-        b'G' => Base::G,
-        b'T' => Base::T,
-        _ => Base::N,
-    }
-}
-
-/// Write the header of a .vcf file
-fn write_vcf_header<W: Write>(f: &mut W,
-                              ref_name: &str,
-                              contig_info: &[(String, usize)],
-) -> Result<vcf::Header, std::io::Error> {
-    let mut writer = vcf::Writer::new(f);
-    let mut header_builder = vcf::Header::builder();
-    for (contig_header, length) in contig_info.iter() {
-        let record = Map::<Contig>::builder()
-            .set_length(*length)
-            .build();
-
-        let mut header_contents = contig_header.split_whitespace();
-        let contig_name = header_contents.next().expect("Contig name");
-        header_builder = header_builder.add_contig(
-            contig_name.parse().expect("Query contig name in header"),
-            record.expect("Record of type vcf::header::record::value::map::Contig"),
-        );
-
-    };
-    header_builder = header_builder.add_sample_name("unknown");
-    let mut header = header_builder.build();
-
-    let current_date = Local::now().format("%Y%m%d").to_string();
-    let vcf_date = Collection::Unstructured(vec![current_date]);
-    header.other_records_mut().insert("fileDate".parse().expect("Valid string"), vcf_date.clone());
-
-    let vcf_source = Collection::Unstructured(vec![format!("kbo-cli v{}", env!("CARGO_PKG_VERSION"))]);
-    header.other_records_mut().insert("source".parse().expect("Valid string"), vcf_source.clone());
-
-    let vcf_reference = Collection::Unstructured(vec![ref_name.to_string()]);
-    header.other_records_mut().insert("reference".parse().expect("Valid string"), vcf_reference.clone());
-
-    let vcf_phasing = Collection::Unstructured(vec!["none".to_string()]);
-    header.other_records_mut().insert("phasing".parse().expect("Valid string"), vcf_phasing.clone());
-
-    writer.write_header(&header)?;
-
-    Ok(header)
-}
-
-/// Write the contents of a .vcf file
-fn write_vcf<W: Write>(f: &mut W,
-                       header: &vcf::Header,
-                       ref_seq: &[u8],
-                       mapped_seq: &[u8],
-                       contig_header: &str
-) -> Result<(), std::io::Error> {
-    let mut writer = vcf::Writer::new(f);
-
-    // Write each record (column)
-    let keys = Keys::try_from(vec![key::GENOTYPE]).unwrap();
-
-    for (mapped_pos, ref_base) in ref_seq.iter().enumerate() {
-        let alt_base: Base;
-        let mut variant = false;
-
-        let mapped_base = mapped_seq[mapped_pos];
-
-        let (genotype, alt_base) = if mapped_base == *ref_base {
-            (String::from("0"), u8_to_base(mapped_base))
-        } else if mapped_base == b'-' {
-            // Only output changes that can be resolved
-            variant = false;
-            (String::from("."), u8_to_base(b'-'))
-        } else {
-            variant = true;
-            alt_base = u8_to_base(mapped_base);
-            (mapped_base.to_string(), alt_base)
-        };
-
-        if variant {
-            let ref_allele = u8_to_base(*ref_base);
-            let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String(genotype))]]);
-            let alt_allele = vec![Allele::Bases(vec![alt_base])];
-
-            let mut header_contents = contig_header.split_whitespace();
-            let contig_name = header_contents.next().expect("Contig name");
-
-            let record = vcf::Record::builder()
-                .set_chromosome(
-                    contig_name
-                        .parse()
-                        .expect("Invalid chromosome name"),
-                )
-                .set_position(Position::from(mapped_pos + 1))
-                .add_reference_base(ref_allele)
-                .set_alternate_bases(AlternateBases::from(alt_allele))
-                .set_genotypes(genotypes)
-                .build()
-                .expect("Could not construct record");
-            writer.write_record(header, &record)?;
-        }
-    }
-    Ok(())
 }
 
 /// Use `kbo` to list the available commands or `kbo <command>` to run.
@@ -415,7 +293,7 @@ fn main() {
                                      ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
                 } else if out_format == "vcf" {
                     // Will map separately against each contig in the reference
-                    let vcf_header = write_vcf_header(&mut stdout.lock(), ref_file,
+                    let vcf_header = vcf_writer::write_vcf_header(&mut stdout.lock(), ref_file,
                                      &ref_data.iter().map(|(contig_name, contig_seq)| {
                                          (contig_name.clone(), contig_seq.len())
                                      }).collect::<Vec<(String, usize)>>())
@@ -423,7 +301,7 @@ fn main() {
 
                         ref_data.iter().for_each(|(ref_header, ref_seq)| {
                             let res = kbo::map(ref_seq, &sbwt, &lcs, map_opts);
-                            write_vcf(&mut stdout.lock(), &vcf_header, ref_seq, &res, ref_header).expect("Write contents to .vcf file");
+                            vcf_writer::write_vcf_contents(&mut stdout.lock(), &vcf_header, ref_seq, &res, ref_header).expect("Write contents to .vcf file");
                         });
                 }
             });
