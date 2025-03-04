@@ -54,19 +54,6 @@ fn read_from_fastx_parser(
 // Reads all sequence data from a fastX file
 fn read_fastx_file(
     file: &str,
-) -> Vec<Vec<u8>> {
-    let mut seq_data: Vec<Vec<u8>> = Vec::new();
-    let mut reader = needletail::parse_fastx_file(file).unwrap_or_else(|_| panic!("Expected valid fastX file at {}", file));
-	while let Some(rec) = read_from_fastx_parser(&mut *reader) {
-		let seqrec = rec.normalize(true);
-		seq_data.push(seqrec.to_vec());
-	}
-    seq_data
-}
-
-// Reads all sequence data from a fastX file
-fn read_fastx_file2(
-    file: &str,
 ) -> Vec<(String, Vec<u8>)> {
     let mut seq_data: Vec<(String, Vec<u8>)> = Vec::new();
     let mut reader = needletail::parse_fastx_file(file).unwrap_or_else(|_| panic!("Expected valid fastX file at {}", file));
@@ -244,7 +231,7 @@ fn main() {
 			info!("Building SBWT index from {} files...", seq_files.len());
 			let mut seq_data: Vec<Vec<u8>> = Vec::new();
 			seq_files.iter().for_each(|file| {
-				seq_data.append(&mut read_fastx_file(file));
+				seq_data.append(&mut read_fastx_file(file).into_iter().map(|(_, seq)| seq).collect::<Vec<Vec<u8>>>());
 			});
 
 			let (sbwt, lcs) = kbo::build(&seq_data, sbwt_build_options);
@@ -298,7 +285,7 @@ fn main() {
 				info!("Building SBWT from file {}...", ref_file.as_ref().unwrap());
 
 				if !*detailed {
-					let ref_data = read_fastx_file(ref_file.as_ref().unwrap());
+					let ref_data = read_fastx_file(ref_file.as_ref().unwrap()).into_iter().map(|(_, seq)| seq).collect::<Vec<Vec<u8>>>();
 					let n_bases = ref_data.iter().map(|x| x.len()).reduce(|a, b| a + b).unwrap();
 					indexes.push((kbo::index::build_sbwt_from_vecs(&ref_data, &Some(sbwt_build_options)), ref_file.clone().unwrap(), n_bases));
 				} else {
@@ -411,12 +398,12 @@ fn main() {
                 .build()
                 .unwrap();
 
-            let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file2(ref_file);
+            let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file(ref_file);
 
             let stdout = std::io::stdout();
 
             query_files.iter().for_each(|query_file| {
-                let contigs: Vec<Vec<u8>> = read_fastx_file2(query_file).iter().map(|(_, seq)| seq.clone()).collect();
+                let contigs: Vec<Vec<u8>> = read_fastx_file(query_file).iter().map(|(_, seq)| seq.clone()).collect();
                 let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone()));
 
                 if out_format == "aln" {
