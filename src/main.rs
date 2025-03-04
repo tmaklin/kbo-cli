@@ -131,7 +131,7 @@ fn write_vcf_header<W: Write>(f: &mut W,
 /// Write the contents of a .vcf file
 fn write_vcf<W: Write>(f: &mut W,
                        header: &vcf::Header,
-                       ref_seq: &[&u8],
+                       ref_seq: &[u8],
                        mapped_seq: &[u8],
                        contig_header: &str
 ) -> Result<(), std::io::Error> {
@@ -146,7 +146,7 @@ fn write_vcf<W: Write>(f: &mut W,
 
         let mapped_base = mapped_seq[mapped_pos];
 
-        let (genotype, alt_base) = if mapped_base == **ref_base {
+        let (genotype, alt_base) = if mapped_base == *ref_base {
             (String::from("0"), u8_to_base(mapped_base))
         } else if mapped_base == b'-' {
             // Only output changes that can be resolved
@@ -159,7 +159,7 @@ fn write_vcf<W: Write>(f: &mut W,
         };
 
         if variant {
-            let ref_allele = u8_to_base(**ref_base);
+            let ref_allele = u8_to_base(*ref_base);
             let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String(genotype))]]);
             let alt_allele = vec![Allele::Bases(vec![alt_base])];
 
@@ -437,7 +437,7 @@ fn main() {
                         ref_data.iter().for_each(|ref_contig| {
                             indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
                                 let res = kbo::map(ref_contig, sbwt, lcs, map_opts);
-                                let _ = write_vcf(&mut stdout.lock(), &vcf_header, &ref_data.iter().flatten().collect::<Vec<&u8>>(), &res, contig_name);
+                                let _ = write_vcf(&mut stdout.lock(), &vcf_header, ref_contig, &res, contig_name);
                             });
                         });
                 };
