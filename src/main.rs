@@ -303,6 +303,8 @@ fn main() {
                             let res = kbo::map(ref_seq, &sbwt, &lcs, map_opts);
                             vcf_writer::write_vcf_contents(&mut stdout.lock(), &vcf_header, ref_seq, &res, ref_header).expect("Write contents to .vcf file");
                         });
+                } else {
+                    panic!("Unrecognized output format `--format {}``", out_format);
                 }
             });
         },
