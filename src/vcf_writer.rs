@@ -105,7 +105,7 @@ pub fn write_vcf_contents<W: Write>(f: &mut W,
         } else {
             variant = true;
             alt_base = u8_to_base(mapped_base);
-            (mapped_base.to_string(), alt_base)
+            ("1".to_string(), alt_base)
         };
 
         if variant {
