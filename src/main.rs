@@ -379,7 +379,6 @@ fn main() {
         Some(cli::Commands::Map {
             query_files,
             ref_file,
-            detailed,
             out_format,
             max_error_prob,
             num_threads,
@@ -412,11 +411,6 @@ fn main() {
                 .build()
                 .unwrap();
 
-            // --detailed only makes sense for .vcf output format
-            if *detailed && out_format == "aln" {
-                log::warn!("--detailed does not do anything with output format aln");
-            }
-
             let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file2(ref_file);
 
             let stdout = std::io::stdout();
@@ -432,7 +426,7 @@ fn main() {
                     });
                     let _ = writeln!(&mut stdout.lock(),
                                      ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
-                } else if out_format == "vcf" && *detailed {
+                } else if out_format == "vcf" {
                     // Will map separately against each contig in the reference
                     let vcf_header = write_vcf_header(&mut stdout.lock(), ref_file,
                                      &ref_data.iter().map(|(contig_name, contig_seq)| {
@@ -444,17 +438,6 @@ fn main() {
                             let res = kbo::map(ref_seq, &sbwt, &lcs, map_opts);
                             write_vcf(&mut stdout.lock(), &vcf_header, ref_seq, &res, ref_header).expect("Write contents to .vcf file");
                         });
-                } else if out_format == "vcf" {
-                    // Will flatten the reference and map against it
-                    let ref_contigs = ref_data.iter().map(|(_, contig)| contig.clone()).collect::<Vec<Vec<u8>>>();
-                    let ref_concat = ref_contigs.into_iter().flatten().collect::<Vec<u8>>();
-
-                    let vcf_header = write_vcf_header(&mut stdout.lock(), ref_file,
-                                                      &[(ref_file.clone(), ref_concat.len())])
-                        .expect("Write header to .vcf file");
-
-                    let res = kbo::map(&ref_concat, &sbwt, &lcs, map_opts);
-                    write_vcf(&mut stdout.lock(), &vcf_header, &ref_concat, &res, ref_file).expect("Write contents to .vcf file");
                 }
             });
         },
