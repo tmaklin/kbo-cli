@@ -64,6 +64,20 @@ fn read_fastx_file(
     seq_data
 }
 
+// Reads all sequence data from a fastX file
+fn read_fastx_file2(
+    file: &str,
+) -> Vec<(String, Vec<u8>)> {
+    let mut seq_data: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut reader = needletail::parse_fastx_file(file).unwrap_or_else(|_| panic!("Expected valid fastX file at {}", file));
+    while let Some(rec) = read_from_fastx_parser(&mut *reader) {
+        let seqrec = rec.normalize(true);
+        let seqname = String::from_utf8(rec.id().to_vec()).expect("UTF-8");
+        seq_data.push((seqname, seqrec.to_vec()));
+    }
+    seq_data
+}
+
 /// Initializes the logger with verbosity given in `log_max_level`.
 fn init_log(log_max_level: usize) {
     stderrlog::new()
@@ -90,13 +104,13 @@ fn u8_to_base(ref_base: u8) -> Base {
 /// Write the header of a .vcf file
 fn write_vcf_header<W: Write>(f: &mut W,
                               ref_name: &str,
-                              contig_info: &[(&String, &usize)],
+                              contig_info: &[(String, usize)],
 ) -> Result<vcf::Header, std::io::Error> {
     let mut writer = vcf::Writer::new(f);
     let mut header_builder = vcf::Header::builder();
     for (contig_header, length) in contig_info.iter() {
         let record = Map::<Contig>::builder()
-            .set_length(**length)
+            .set_length(*length)
             .build();
 
         let mut header_contents = contig_header.split_whitespace();
@@ -398,49 +412,49 @@ fn main() {
                 .build()
                 .unwrap();
 
-            let ref_data = read_fastx_file(ref_file);
+            // --detailed only makes sense for .vcf output format
+            if *detailed && out_format == "aln" {
+                log::warn!("--detailed does not do anything with output format aln");
+            }
+
+            let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file2(ref_file);
 
             let stdout = std::io::stdout();
 
-            let mut indexes: Vec<((sbwt::SbwtIndexVariant, sbwt::LcsArray), String, usize)> = Vec::new();
-
             query_files.iter().for_each(|query_file| {
-                if *detailed {
-                    let mut reader = needletail::parse_fastx_file(query_file).expect("valid path/file");
-                    while let Some(contig) = read_from_fastx_parser(&mut *reader) {
-                        let name = std::str::from_utf8(contig.id()).expect("UTF-8");
-                        let seq = contig.normalize(true);
-                        indexes.push((kbo::index::build_sbwt_from_vecs(&[seq.to_vec()], &Some(sbwt_build_options.clone())), name.to_string(), seq.len()));
-                    }
-                } else {
-                    let contigs = read_fastx_file(query_file);
-                    let n_bases = contigs.iter().map(|x| x.len()).reduce(|a, b| a + b).unwrap();
-                    let name = query_file.clone();
-                    indexes.push((kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone())), name, n_bases));
-                }
+                let contigs: Vec<Vec<u8>> = read_fastx_file2(query_file).iter().map(|(_, seq)| seq.clone()).collect();
+                let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone()));
 
                 if out_format == "aln" {
-                    ref_data.iter().for_each(|ref_contig| {
-                        indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
-                            let res = kbo::map(ref_contig, sbwt, lcs, map_opts);
-                            let _ = writeln!(&mut stdout.lock(),
-                                             ">{}\n{}", contig_name, std::str::from_utf8(&res).expect("UTF-8"));
-                        });
-                    });
-                } else if out_format == "vcf" {
+                    // Concatenate the reference if it contains multiple contigs
+                    let ref_concat = ref_data.iter().map(|(_, contig)| contig.clone()).collect::<Vec<Vec<u8>>>();
+                    let res = kbo::map(&ref_concat.into_iter().flatten().collect::<Vec<u8>>(), &sbwt, &lcs, map_opts);
+                    let _ = writeln!(&mut stdout.lock(),
+                                     ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
+                } else if out_format == "vcf" && *detailed {
+                    // Will map separately against each contig in the reference
                     let vcf_header = write_vcf_header(&mut stdout.lock(), ref_file,
-                                     &indexes.iter().map(|((_, _), contig_name, contig_len)| {
-                                         (contig_name, contig_len)
-                                     }).collect::<Vec<(&String, &usize)>>())
-                        .expect("I/O error");
+                                     &ref_data.iter().map(|(contig_name, contig_seq)| {
+                                         (contig_name.clone(), contig_seq.len())
+                                     }).collect::<Vec<(String, usize)>>())
+                        .expect("Write header to .vcf file");
 
-                        ref_data.iter().for_each(|ref_contig| {
-                            indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
-                                let res = kbo::map(ref_contig, sbwt, lcs, map_opts);
-                                let _ = write_vcf(&mut stdout.lock(), &vcf_header, ref_contig, &res, contig_name);
-                            });
+                        ref_data.iter().for_each(|(ref_header, ref_seq)| {
+                            let res = kbo::map(ref_seq, &sbwt, &lcs, map_opts);
+                            write_vcf(&mut stdout.lock(), &vcf_header, ref_seq, &res, ref_header).expect("Write contents to .vcf file");
                         });
-                };
+                } else if out_format == "vcf" {
+                    // Will flatten the reference and map against it
+                    let ref_contigs = ref_data.iter().map(|(_, contig)| contig.clone()).collect::<Vec<Vec<u8>>>();
+                    let ref_concat = ref_contigs.into_iter().flatten().collect::<Vec<u8>>();
+
+                    let vcf_header = write_vcf_header(&mut stdout.lock(), ref_file,
+                                                      &[(ref_file.clone(), ref_concat.len())])
+                        .expect("Write header to .vcf file");
+
+                    let res = kbo::map(&ref_concat, &sbwt, &lcs, map_opts);
+                    write_vcf(&mut stdout.lock(), &vcf_header, &ref_concat, &res, ref_file).expect("Write contents to .vcf file");
+                }
             });
         },
         None => {}
