@@ -356,42 +356,42 @@ fn main() {
 		},
 
         Some(cli::Commands::Map {
-			query_files,
-			ref_file,
+            query_files,
+            ref_file,
             detailed,
             out_format,
-			max_error_prob,
-			num_threads,
+            max_error_prob,
+            num_threads,
             kmer_size,
-			prefix_precalc,
-			dedup_batches,
-			mem_gb,
-			temp_dir,
-			verbose,
+            prefix_precalc,
+            dedup_batches,
+            mem_gb,
+            temp_dir,
+            verbose,
         }) => {
-			init_log(if *verbose { 2 } else { 1 });
+            init_log(if *verbose { 2 } else { 1 });
             let mut sbwt_build_options = kbo::index::BuildOpts::default();
-			// These are required for the subcommand to work correctly
-			sbwt_build_options.add_revcomp = true;
-			sbwt_build_options.build_select = true;
-			// These can be adjusted
-			sbwt_build_options.k = *kmer_size;
-			sbwt_build_options.num_threads = *num_threads;
-			sbwt_build_options.prefix_precalc = *prefix_precalc;
-			sbwt_build_options.dedup_batches = *dedup_batches;
-			sbwt_build_options.mem_gb = *mem_gb;
-			sbwt_build_options.temp_dir = temp_dir.clone();
+            // These are required for the subcommand to work correctly
+            sbwt_build_options.add_revcomp = true;
+            sbwt_build_options.build_select = true;
+            // These can be adjusted
+            sbwt_build_options.k = *kmer_size;
+            sbwt_build_options.num_threads = *num_threads;
+            sbwt_build_options.prefix_precalc = *prefix_precalc;
+            sbwt_build_options.dedup_batches = *dedup_batches;
+            sbwt_build_options.mem_gb = *mem_gb;
+            sbwt_build_options.temp_dir = temp_dir.clone();
 
-			let mut map_opts = kbo::MapOpts::default();
-			map_opts.max_error_prob = *max_error_prob;
+            let mut map_opts = kbo::MapOpts::default();
+            map_opts.max_error_prob = *max_error_prob;
 
-			rayon::ThreadPoolBuilder::new()
-				.num_threads(*num_threads)
-				.thread_name(|i| format!("rayon-thread-{}", i))
-				.build()
-				.unwrap();
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(*num_threads)
+                .thread_name(|i| format!("rayon-thread-{}", i))
+                .build()
+                .unwrap();
 
-			let ref_data = read_fastx_file(ref_file);
+            let ref_data = read_fastx_file(ref_file);
 
             let stdout = std::io::stdout();
 
