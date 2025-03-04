@@ -20,6 +20,18 @@ use needletail::parser::SequenceRecord;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 
+// TODO clean up
+use noodles_vcf::{
+    self as vcf,
+    header::record::value::{map::Contig, Map},
+    record::{
+        alternate_bases::Allele,
+        genotypes::{keys::key, sample::Value, Keys},
+        reference_bases::Base,
+        AlternateBases, Genotypes, Position,
+    },
+};
+
 // Command-line interface
 mod cli;
 
@@ -59,6 +71,87 @@ fn init_log(log_max_level: usize) {
 	.timestamp(stderrlog::Timestamp::Off)
 	.init()
 	.unwrap();
+}
+
+/// [`u8`] representation used elsewhere to [`noodles_vcf::record::reference_bases::Base`]
+#[inline]
+fn u8_to_base(ref_base: u8) -> Base {
+    match ref_base {
+        b'A' => Base::A,
+        b'C' => Base::C,
+        b'G' => Base::G,
+        b'T' => Base::T,
+        _ => Base::N,
+    }
+}
+
+/// Write alignments as a .vcf file
+/// Adapted from
+/// https://github.com/bacpop/ska.rust/blob/9483f0383a8cc9b151ae0cae4c33bf62fc89cbec/src/ska_ref.rs#L427
+fn write_vcf<W: Write>(f: &mut W, ref_seq: &Vec<u8>, alignments: &Vec<Vec<u8>>, names: &Vec<String>) -> Result<(), std::io::Error> {
+    log::info!("Converting to VCF");
+
+    // Write the VCF header
+    let mut writer = vcf::Writer::new(f);
+    let mut header_builder = vcf::Header::builder();
+    for contig in names {
+        header_builder = header_builder.add_contig(
+            contig.parse().expect("Could not add contig to header"),
+            Map::<Contig>::new(),
+        );
+    }
+    for name in names {
+        header_builder = header_builder.add_sample_name(name);
+    }
+    let header = header_builder.build();
+    writer.write_header(&header)?;
+
+    // Write each record (column)
+    let keys = Keys::try_from(vec![key::GENOTYPE]).unwrap();
+
+    for (mapped_pos, ref_base) in ref_seq.iter().enumerate() {
+        let mut genotype_vec = Vec::with_capacity(alignments.len());
+        let mut alt_bases: Vec<Base> = Vec::new();
+        let mut variant = false;
+        for query in alignments {
+            let mapped_base = query[mapped_pos];
+
+            let gt = if mapped_base == *ref_base {
+                String::from("0")
+            } else if mapped_base == b'-' {
+                variant = true;
+                String::from(".")
+            } else {
+                variant = true;
+                let alt_base = u8_to_base(mapped_base);
+                if !alt_bases.contains(&alt_base) {
+                    alt_bases.push(alt_base);
+                }
+                (alt_bases.iter().position(|&r| r == alt_base).unwrap() + 1).to_string()
+            };
+            genotype_vec.push(vec![Some(Value::String(gt))]);
+        }
+        if variant {
+            let ref_allele = u8_to_base(*ref_base);
+            let genotypes = Genotypes::new(keys.clone(), genotype_vec);
+            let alt_alleles: Vec<Allele> =
+                alt_bases.iter().map(|a| Allele::Bases(vec![*a])).collect();
+            let record = vcf::Record::builder()
+                .set_chromosome(
+                    "test"
+                        .parse()
+                        .expect("Invalid chromosome name"),
+                )
+                .set_position(Position::from(mapped_pos + 1))
+                .add_reference_base(ref_allele)
+                .set_alternate_bases(AlternateBases::from(alt_alleles))
+                .set_genotypes(genotypes)
+                .build()
+                .expect("Could not construct record");
+            writer.write_record(&header, &record)?;
+        }
+    }
+    Ok(())
 }
 
 /// Use `kbo` to list the available commands or `kbo <command>` to run.
@@ -242,6 +335,7 @@ fn main() {
         Some(cli::Commands::Map {
 			query_files,
 			ref_file,
+            out_format,
 			max_error_prob,
 			num_threads,
             kmer_size,
@@ -275,8 +369,11 @@ fn main() {
 
 			let ref_data = read_fastx_file(ref_file);
 
+			let mut alignments: Vec<Vec<u8>> = Vec::new();
+			let mut names: Vec<String> = Vec::new();
+
 			let stdout = std::io::stdout();
-			query_files.par_iter().for_each(|query_file| {
+			query_files.iter().for_each(|query_file| {
 				let query_data = read_fastx_file(query_file);
 				let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&query_data, &Some(sbwt_build_options.clone()));
 
@@ -285,9 +382,20 @@ fn main() {
 					res.append(&mut kbo::map(ref_contig, &sbwt, &lcs, map_opts));
 				});
 
-				let _ = writeln!(&mut stdout.lock(),
-								 ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
+				if out_format == "aln" {
+					let _ = writeln!(&mut stdout.lock(),
+									 ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
+				} else if out_format == "vcf" {
+					// Store in alignments and write later
+					names.push(query_file.to_string());
+					alignments.push(res);
+				}
 			});
+
+			if out_format == "vcf" {
+                let _ = write_vcf(&mut stdout.lock(), &ref_data.into_iter().flatten().collect::<Vec<u8>>(), &alignments, &names);
+			}
+
 		},
 		None => {}
     }

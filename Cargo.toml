@@ -20,6 +20,7 @@ clap = { version = "4", features = ["derive"]}
 kbo = "0.4.1"
 log = "0.4.20"
 needletail = { version = "0.6.0", default-features = false, features = ["flate2"] }
+noodles-vcf = "0.49"
 rayon = "1"
 sbwt = "0.3.4"
 stderrlog = "0.6.0"
