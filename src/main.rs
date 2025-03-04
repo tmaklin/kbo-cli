@@ -407,7 +407,7 @@ fn main() {
                     }
                 } else {
                     let contigs = read_fastx_file(query_file);
-                    let n_bases = ref_data.iter().map(|x| x.len()).reduce(|a, b| a + b).unwrap();
+                    let n_bases = contigs.iter().map(|x| x.len()).reduce(|a, b| a + b).unwrap();
                     let name = query_file.clone();
                     indexes.push((kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone())), name, n_bases));
                 }
