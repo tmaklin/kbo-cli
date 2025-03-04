@@ -128,7 +128,7 @@ pub enum Commands {
         ref_file: String,
 
         // Output format
-        #[arg(short = 'f', long = "format", default_value = "aln", help_heading = "Output")]
+        #[arg(short = 'f', long = "format", default_value = "aln", help_heading = "Output", help = "Output format (aln or vcf)")]
         out_format: String,
 
         // Parameters
