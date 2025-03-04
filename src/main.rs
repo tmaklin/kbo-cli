@@ -426,9 +426,10 @@ fn main() {
                 let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone()));
 
                 if out_format == "aln" {
-                    // Concatenate the reference if it contains multiple contigs
-                    let ref_concat = ref_data.iter().map(|(_, contig)| contig.clone()).collect::<Vec<Vec<u8>>>();
-                    let res = kbo::map(&ref_concat.into_iter().flatten().collect::<Vec<u8>>(), &sbwt, &lcs, map_opts);
+                    let mut res: Vec<u8> = Vec::new();
+                    ref_data.iter().for_each(|(_, ref_seq)| {
+                        res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts));
+                    });
                     let _ = writeln!(&mut stdout.lock(),
                                      ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
                 } else if out_format == "vcf" && *detailed {
