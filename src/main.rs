@@ -415,7 +415,7 @@ fn main() {
                 if out_format == "aln" {
                     ref_data.iter().for_each(|ref_contig| {
                         indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
-                            let res = kbo::map(ref_contig, &sbwt, &lcs, map_opts);
+                            let res = kbo::map(ref_contig, sbwt, lcs, map_opts);
                             let _ = writeln!(&mut stdout.lock(),
                                              ">{}\n{}", contig_name, std::str::from_utf8(&res).expect("UTF-8"));
                         });
@@ -429,8 +429,8 @@ fn main() {
 
                         ref_data.iter().for_each(|ref_contig| {
                             indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
-                                let res = kbo::map(ref_contig, &sbwt, &lcs, map_opts);
-                                let _ = write_vcf(&mut stdout.lock(), &vcf_header, &ref_data.iter().flatten().collect::<Vec<&u8>>(), &res, &contig_name);
+                                let res = kbo::map(ref_contig, sbwt, lcs, map_opts);
+                                let _ = write_vcf(&mut stdout.lock(), &vcf_header, &ref_data.iter().flatten().collect::<Vec<&u8>>(), &res, contig_name);
                             });
                         });
                 };
