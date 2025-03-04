@@ -14,6 +14,7 @@
 use std::io::Write;
 
 use clap::Parser;
+use chrono::offset::Local;
 use log::info;
 use needletail::Sequence;
 use needletail::parser::SequenceRecord;
@@ -24,6 +25,7 @@ use rayon::iter::IntoParallelRefIterator;
 use noodles_vcf::{
     self as vcf,
     header::record::value::{map::Contig, Map},
+    header::record::value::Collection,
     record::{
         alternate_bases::Allele,
         genotypes::{keys::key, sample::Value, Keys},
@@ -85,70 +87,91 @@ fn u8_to_base(ref_base: u8) -> Base {
     }
 }
 
-/// Write alignments as a .vcf file
-/// Adapted from
-/// https://github.com/bacpop/ska.rust/blob/9483f0383a8cc9b151ae0cae4c33bf62fc89cbec/src/ska_ref.rs#L427
-fn write_vcf<W: Write>(f: &mut W, ref_seq: &Vec<u8>, alignments: &Vec<Vec<u8>>, names: &Vec<String>) -> Result<(), std::io::Error> {
-    log::info!("Converting to VCF");
-
-    // Write the VCF header
+/// Write the header of a .vcf file
+fn write_vcf_header<W: Write>(f: &mut W,
+                              ref_name: &str,
+                              contig_info: &[(&String, &usize)],
+) -> Result<vcf::Header, std::io::Error> {
     let mut writer = vcf::Writer::new(f);
     let mut header_builder = vcf::Header::builder();
-    for contig in names {
+    for (name, length) in contig_info.iter() {
+        let record = Map::<Contig>::builder()
+            .set_length(**length)
+            .build();
+
         header_builder = header_builder.add_contig(
-            contig.parse().expect("Could not add contig to header"),
-            Map::<Contig>::new(),
+            name.parse().expect("Could not add contig to header"),
+            record.expect("Valid contig"),
         );
-    }
-    for name in names {
-        header_builder = header_builder.add_sample_name(name);
-    }
-    let header = header_builder.build();
+
+    };
+    header_builder = header_builder.add_sample_name("unknown");
+    let mut header = header_builder.build();
+
+    let current_date = Local::now().format("%Y%m%d").to_string();
+    let vcf_date = Collection::Unstructured(vec![current_date]);
+    header.other_records_mut().insert("fileDate".parse().expect("Valid string"), vcf_date.clone());
+
+    let vcf_source = Collection::Unstructured(vec![format!("kbo-cli v{}", env!("CARGO_PKG_VERSION"))]);
+    header.other_records_mut().insert("source".parse().expect("Valid string"), vcf_source.clone());
+
+    let vcf_reference = Collection::Unstructured(vec![ref_name.to_string()]);
+    header.other_records_mut().insert("reference".parse().expect("Valid string"), vcf_reference.clone());
+
+    let vcf_phasing = Collection::Unstructured(vec!["none".to_string()]);
+    header.other_records_mut().insert("phasing".parse().expect("Valid string"), vcf_phasing.clone());
+
     writer.write_header(&header)?;
+
+    Ok(header)
+}
+
+/// Write the contents of a .vcf file
+fn write_vcf<W: Write>(f: &mut W,
+                       header: &vcf::Header,
+                       ref_seq: &[&u8],
+                       mapped_seq: &[u8],
+                       contig_name: &str
+) -> Result<(), std::io::Error> {
+    let mut writer = vcf::Writer::new(f);
 
     // Write each record (column)
     let keys = Keys::try_from(vec![key::GENOTYPE]).unwrap();
 
     for (mapped_pos, ref_base) in ref_seq.iter().enumerate() {
-        let mut genotype_vec = Vec::with_capacity(alignments.len());
-        let mut alt_bases: Vec<Base> = Vec::new();
+        let alt_base: Base;
         let mut variant = false;
-        for query in alignments {
-            let mapped_base = query[mapped_pos];
 
-            let gt = if mapped_base == *ref_base {
-                String::from("0")
-            } else if mapped_base == b'-' {
-                variant = true;
-                String::from(".")
-            } else {
-                variant = true;
-                let alt_base = u8_to_base(mapped_base);
-                if !alt_bases.contains(&alt_base) {
-                    alt_bases.push(alt_base);
-                }
-                (alt_bases.iter().position(|&r| r == alt_base).unwrap() + 1).to_string()
-            };
-            genotype_vec.push(vec![Some(Value::String(gt))]);
-        }
+        let mapped_base = mapped_seq[mapped_pos];
+
+        let (genotype, alt_base) = if mapped_base == **ref_base {
+            (String::from("0"), u8_to_base(mapped_base))
+        } else if mapped_base == b'-' {
+            variant = true;
+            (String::from("."), u8_to_base(b'-'))
+        } else {
+            variant = true;
+            alt_base = u8_to_base(mapped_base);
+            (mapped_base.to_string(), alt_base)
+        };
+
         if variant {
-            let ref_allele = u8_to_base(*ref_base);
-            let genotypes = Genotypes::new(keys.clone(), genotype_vec);
-            let alt_alleles: Vec<Allele> =
-                alt_bases.iter().map(|a| Allele::Bases(vec![*a])).collect();
+            let ref_allele = u8_to_base(**ref_base);
+            let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String(genotype))]]);
+            let alt_allele = vec![Allele::Bases(vec![alt_base])];
             let record = vcf::Record::builder()
                 .set_chromosome(
-                    "test"
+                    contig_name
                         .parse()
                         .expect("Invalid chromosome name"),
                 )
                 .set_position(Position::from(mapped_pos + 1))
                 .add_reference_base(ref_allele)
-                .set_alternate_bases(AlternateBases::from(alt_alleles))
+                .set_alternate_bases(AlternateBases::from(alt_allele))
                 .set_genotypes(genotypes)
                 .build()
                 .expect("Could not construct record");
-            writer.write_record(&header, &record)?;
+            writer.write_record(header, &record)?;
         }
     }
     Ok(())
@@ -335,6 +358,7 @@ fn main() {
         Some(cli::Commands::Map {
 			query_files,
 			ref_file,
+            detailed,
             out_format,
 			max_error_prob,
 			num_threads,
@@ -369,34 +393,49 @@ fn main() {
 
 			let ref_data = read_fastx_file(ref_file);
 
-			let mut alignments: Vec<Vec<u8>> = Vec::new();
-			let mut names: Vec<String> = Vec::new();
+            let stdout = std::io::stdout();
 
-			let stdout = std::io::stdout();
-			query_files.iter().for_each(|query_file| {
-				let query_data = read_fastx_file(query_file);
-				let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&query_data, &Some(sbwt_build_options.clone()));
+            let mut indexes: Vec<((sbwt::SbwtIndexVariant, sbwt::LcsArray), String, usize)> = Vec::new();
 
-				let mut res: Vec<u8> = Vec::new();
-				ref_data.iter().for_each(|ref_contig| {
-					res.append(&mut kbo::map(ref_contig, &sbwt, &lcs, map_opts));
-				});
+            query_files.iter().for_each(|query_file| {
+                if *detailed {
+                    let mut reader = needletail::parse_fastx_file(query_file).expect("valid path/file");
+                    while let Some(contig) = read_from_fastx_parser(&mut *reader) {
+                        let name = std::str::from_utf8(contig.id()).expect("UTF-8");
+                        let seq = contig.normalize(true);
+                        indexes.push((kbo::index::build_sbwt_from_vecs(&[seq.to_vec()], &Some(sbwt_build_options.clone())), name.to_string(), seq.len()));
+                    }
+                } else {
+                    let contigs = read_fastx_file(query_file);
+                    let n_bases = ref_data.iter().map(|x| x.len()).reduce(|a, b| a + b).unwrap();
+                    let name = query_file.clone();
+                    indexes.push((kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone())), name, n_bases));
+                }
 
-				if out_format == "aln" {
-					let _ = writeln!(&mut stdout.lock(),
-									 ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
-				} else if out_format == "vcf" {
-					// Store in alignments and write later
-					names.push(query_file.to_string());
-					alignments.push(res);
-				}
-			});
+                if out_format == "aln" {
+                    ref_data.iter().for_each(|ref_contig| {
+                        indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
+                            let res = kbo::map(ref_contig, &sbwt, &lcs, map_opts);
+                            let _ = writeln!(&mut stdout.lock(),
+                                             ">{}\n{}", contig_name, std::str::from_utf8(&res).expect("UTF-8"));
+                        });
+                    });
+                } else if out_format == "vcf" {
+                    let vcf_header = write_vcf_header(&mut stdout.lock(), ref_file,
+                                     &indexes.iter().map(|((_, _), contig_name, contig_len)| {
+                                         (contig_name, contig_len)
+                                     }).collect::<Vec<(&String, &usize)>>())
+                        .expect("I/O error");
 
-			if out_format == "vcf" {
-                let _ = write_vcf(&mut stdout.lock(), &ref_data.into_iter().flatten().collect::<Vec<u8>>(), &alignments, &names);
-			}
-
-		},
-		None => {}
+                        ref_data.iter().for_each(|ref_contig| {
+                            indexes.iter().for_each(|((sbwt, lcs), contig_name, _)| {
+                                let res = kbo::map(ref_contig, &sbwt, &lcs, map_opts);
+                                let _ = write_vcf(&mut stdout.lock(), &vcf_header, &ref_data.iter().flatten().collect::<Vec<&u8>>(), &res, &contig_name);
+                            });
+                        });
+                };
+            });
+        },
+        None => {}
     }
 }

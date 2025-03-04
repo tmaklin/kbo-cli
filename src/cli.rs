@@ -122,9 +122,13 @@ pub enum Commands {
         #[arg(group = "input", required = true)]
         query_files: Vec<String>,
 
-        // Reference fasta
+        // Input options
+        // // Reference file
         #[arg(short = 'r', long = "reference", required = true, help_heading = "Input")]
         ref_file: String,
+        // // Do not concatenate contigs in reference
+        #[arg(long = "detailed", help_heading = "Input", default_value_t = false)]
+        detailed: bool,
 
         // Output format
         #[arg(short = 'f', long = "format", default_value = "aln", help_heading = "Output")]
