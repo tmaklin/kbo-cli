@@ -17,7 +17,8 @@ path = "src/main.rs"
 [dependencies]
 ## core
 clap = { version = "4", features = ["derive"]}
-kbo = "0.4.1"
+jseqio = "0.1.4"
+kbo = {version = "0.4.1", path = "../kbo"}
 log = "0.4.20"
 needletail = { version = "0.6.0", default-features = false, features = ["flate2"] }
 rayon = "1"

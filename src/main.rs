@@ -5,6 +5,7 @@
 // Copyrights in this project are retained by contributors. No copyright assignment
 // is required to contribute to this project.
 
+use std::io::stdout;
 // Except as otherwise noted (below and/or in individual files), this
 // project is licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE> or <http://www.apache.org/licenses/LICENSE-2.0> or
@@ -14,11 +15,16 @@
 use std::io::Write;
 
 use clap::Parser;
+use jseqio::record::Record;
+use kbo::variant_calling::call_variants;
+use kbo::variant_calling::write_in_vcf_format;
 use log::info;
 use needletail::Sequence;
 use needletail::parser::SequenceRecord;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
+use sbwt::BitPackedKmerSortingMem;
+use sbwt::SbwtIndexBuilder;
 
 // Command-line interface
 mod cli;
@@ -238,6 +244,66 @@ fn main() {
 				});
 			});
 		},
+        Some(cli::Commands::CallVariants{
+			query_file,
+			ref_file,
+			max_error_prob,
+			num_threads,
+            kmer_size,
+			prefix_precalc,
+			dedup_batches,
+			verbose,
+        }) => {
+			init_log(if *verbose { 2 } else { 1 });
+
+			rayon::ThreadPoolBuilder::new()
+				.num_threads(*num_threads)
+				.thread_name(|i| format!("rayon-thread-{}", i))
+				.build()
+				.unwrap();
+
+			let ref_seqs = jseqio::reader::DynamicFastXReader::from_file(ref_file).unwrap().into_db().unwrap();
+			let ref_seq_slices: Vec<&[u8]> = ref_seqs.iter().map(|rec| rec.seq).collect();
+
+			let query_seqs = jseqio::reader::DynamicFastXReader::from_file(query_file).unwrap().into_db().unwrap();
+			if query_seqs.sequence_count() != 1 {
+				eprintln!("Error: query sequence file must contain just one sequence");
+				return;
+			}
+			let query_seq = query_seqs.get(0).seq;
+			let query_name = query_seqs.get(0).name().to_vec();
+
+			let builder = SbwtIndexBuilder::<BitPackedKmerSortingMem>::new()
+				.add_rev_comp(true)
+				.build_lcs(true)
+				.build_select_support(true)
+				.k(*kmer_size)
+				.n_threads(*num_threads)
+				.precalc_length(*prefix_precalc)
+				.algorithm(
+					BitPackedKmerSortingMem::new()
+					.dedup_batches(*dedup_batches)
+				);
+
+			
+			let (sbwt_ref, lcs_ref) = builder.clone().run_from_slices(&ref_seq_slices);
+			let (sbwt_query, lcs_query) = builder.run_from_slices(&[query_seq]);
+
+			let significant_match_threshold = kbo::derandomize::random_match_threshold(*kmer_size, sbwt_ref.n_kmers(), 4, *max_error_prob);
+
+			let calls = call_variants(
+						  &sbwt_ref, 
+						  lcs_ref.as_ref().unwrap(), 
+						  &sbwt_query, 
+						  lcs_query.as_ref().unwrap(), 
+						  query_seq, 
+						  significant_match_threshold, 
+						  *kmer_size);
+
+			// Todo: buffer writing?
+			write_in_vcf_format(&mut std::io::stdout(), &calls, &String::from_utf8_lossy(&query_name)).unwrap();
+
+		}
 
         Some(cli::Commands::Map {
 			query_files,

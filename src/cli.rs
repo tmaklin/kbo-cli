@@ -5,6 +5,8 @@
 // Copyrights in this project are retained by contributors. No copyright assignment
 // is required to contribute to this project.
 
+use std::path::PathBuf;
+
 // Except as otherwise noted (below and/or in individual files), this
 // project is licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE> or <http://www.apache.org/licenses/LICENSE-2.0> or
@@ -152,6 +154,41 @@ pub enum Commands {
         // // Temporary directory
         #[arg(long = "temp-dir", required = false, help_heading = "Build options")]
         temp_dir: Option<String>,
+
+        // Verbosity
+        #[arg(long = "verbose", default_value_t = false)]
+        verbose: bool,
+    },
+
+    // Map a query or queries to a reference and return the alignment
+    #[command(name = "call-variants")]
+    CallVariants{
+        // Input fasta or fastq query file
+        #[arg(long = "query", short = 'q', required = true, help_heading = "Input")]
+        query_file: PathBuf,
+
+        // Reference fasta or fastq file
+        #[arg(long = "reference", short = 'r', required = true, help_heading = "Input")]
+        ref_file: PathBuf,
+
+        // Upper bound for random match probability
+        #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm")]
+        max_error_prob: f64,
+
+        // Resources
+        #[arg(short = 't', long = "threads", default_value_t = 1)]
+        num_threads: usize,
+
+        // SBWT build parameters
+        // k-mer size
+        #[arg(short = 'k', default_value_t = 31, help_heading = "Build options")]
+        kmer_size: usize,
+        // prefix precalc
+        #[arg(short = 'p', long = "prefix-precalc", default_value_t = 8, help_heading = "Build options")]
+        prefix_precalc: usize,
+        // deduplicate k-mer batches
+        #[arg(short = 'd', long = "dedup-batches", default_value_t = false, help_heading = "Build options")]
+        dedup_batches: bool,
 
         // Verbosity
         #[arg(long = "verbose", default_value_t = false)]
