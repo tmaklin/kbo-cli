@@ -289,16 +289,13 @@ fn main() {
 			let (sbwt_ref, lcs_ref) = builder.clone().run_from_slices(&ref_seq_slices);
 			let (sbwt_query, lcs_query) = builder.run_from_slices(&[query_seq]);
 
-			let significant_match_threshold = kbo::derandomize::random_match_threshold(*kmer_size, sbwt_ref.n_kmers(), 4, *max_error_prob);
-
 			let calls = call_variants(
 						  &sbwt_ref, 
 						  lcs_ref.as_ref().unwrap(), 
 						  &sbwt_query, 
 						  lcs_query.as_ref().unwrap(), 
 						  query_seq, 
-						  significant_match_threshold, 
-						  *kmer_size);
+						  *max_error_prob);
 
 			// Todo: buffer writing?
 			write_in_vcf_format(&mut std::io::stdout(), &calls, &String::from_utf8_lossy(&query_name)).unwrap();
