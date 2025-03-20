@@ -14,6 +14,7 @@
 use std::io::Write;
 
 use chrono::offset::Local;
+use kbo::variant_calling::Variant;
 use noodles_vcf::{
     header::record::value::{map::Contig, Map},
     header::record::value::Collection,
@@ -80,56 +81,41 @@ pub fn write_vcf_header<W: Write>(f: &mut W,
 
 /// Write the contents of a .vcf file
 pub fn write_vcf_contents<W: Write>(f: &mut W,
-                       header: &noodles_vcf::Header,
-                       ref_seq: &[u8],
-                       mapped_seq: &[u8],
-                       contig_header: &str
+                                    header: &noodles_vcf::Header,
+                                    variants: &[Variant],
+                                    contig_header: &str,
 ) -> Result<(), std::io::Error> {
     let mut writer = noodles_vcf::Writer::new(f);
 
     // Write each record (column)
     let keys = Keys::try_from(vec![key::GENOTYPE]).unwrap();
 
-    for (mapped_pos, ref_base) in ref_seq.iter().enumerate() {
-        let alt_base: Base;
-        let mut variant = false;
+    let mut header_contents = contig_header.split_whitespace();
+    let contig_name = header_contents.next().expect("Contig name");
 
-        let mapped_base = mapped_seq[mapped_pos];
+    variants.iter().for_each(|variant| {
+        let alt_bases = variant.query_chars.iter().map(|nt| u8_to_base(*nt)).collect::<Vec<Base>>();
+        let alt_allele = vec![Allele::Bases(alt_bases)];
+        let ref_bases = variant.ref_chars.iter().map(|nt| *nt as char).collect::<String>();
+        let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String("1".to_string()))]]);
 
-        let (genotype, alt_base) = if mapped_base == *ref_base {
-            (String::from("0"), u8_to_base(mapped_base))
-        } else if mapped_base == b'-' {
-            // Only output changes that can be resolved
-            variant = false;
-            (String::from("."), u8_to_base(b'-'))
-        } else {
-            variant = true;
-            alt_base = u8_to_base(mapped_base);
-            ("1".to_string(), alt_base)
-        };
+        let mut record_builder = noodles_vcf::Record::builder()
+            .set_chromosome(
+                contig_name
+                    .parse()
+                    .expect("Invalid chromosome name"),
+            )
+            .set_position(Position::from(variant.query_pos + (variant.query_chars.len() as i64 - variant.ref_chars.len() as i64) as usize))
+            .set_reference_bases(ref_bases.parse().expect("Reference bases"))
+            .set_alternate_bases(AlternateBases::from(alt_allele))
+            .set_genotypes(genotypes);
 
-        if variant {
-            let ref_allele = u8_to_base(*ref_base);
-            let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String(genotype))]]);
-            let alt_allele = vec![Allele::Bases(vec![alt_base])];
-
-            let mut header_contents = contig_header.split_whitespace();
-            let contig_name = header_contents.next().expect("Contig name");
-
-            let record = noodles_vcf::Record::builder()
-                .set_chromosome(
-                    contig_name
-                        .parse()
-                        .expect("Invalid chromosome name"),
-                )
-                .set_position(Position::from(mapped_pos + 1))
-                .add_reference_base(ref_allele)
-                .set_alternate_bases(AlternateBases::from(alt_allele))
-                .set_genotypes(genotypes)
-                .build()
-                .expect("Could not construct record");
-            writer.write_record(header, &record)?;
+        if variant.ref_chars.len() != 1 || variant.query_chars.len() != 1 {
+            record_builder = record_builder.set_info("INDEL".parse().expect("Parsed string"));
         }
-    }
+        let record = record_builder.build().expect("Could not construct record");
+
+        writer.write_record(header, &record).expect("Wrote .vcf record");
+    });
     Ok(())
 }
