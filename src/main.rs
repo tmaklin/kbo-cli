@@ -305,6 +305,7 @@ fn main() {
                     &mut stdout.lock(),
                     &vcf_header,
                     &calls,
+                    ref_seq,
                     ref_contig_header,
                 ).expect("Wrote .vcf record");
             });

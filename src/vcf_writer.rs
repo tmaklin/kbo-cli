@@ -38,6 +38,76 @@ fn u8_to_base(ref_base: u8) -> Base {
     }
 }
 
+fn split_flanking_variants(
+    ref_var: &[u8],
+    query_var: &[u8],
+    query_pos: usize,
+) -> Option<(Variant, Variant)> {
+    let ref_len = ref_var.len();
+    if ref_len != query_var.len() || ref_len == 1 {
+        return None
+    }
+
+    let first_mismatch = ref_var[0] != query_var[0];
+    let last_mismatch = ref_var[ref_len - 1] != query_var[ref_len - 1];
+
+    let mut middle_match = true;
+    for pos in 1..(ref_len - 1) {
+        middle_match &= ref_var[pos] == query_var[pos];
+    }
+
+    if first_mismatch && last_mismatch && middle_match {
+        Some(
+            (Variant{query_chars: vec![query_var[0]], ref_chars: vec![ref_var[0]], query_pos},
+             Variant{query_chars: vec![query_var[ref_len - 1]], ref_chars: vec![ref_var[ref_len - 1]], query_pos: query_pos + ref_len - 1})
+        )
+    } else {
+        None
+    }
+}
+
+fn build_vcf_record(
+    variant: &Variant,
+    ref_seq: &[u8],
+    keys: &Keys,
+    contig_name: &str,
+) -> noodles_vcf::Record {
+    let is_indel = variant.ref_chars.len() != variant.query_chars.len();
+
+    let (alt_bases, ref_bases) = if is_indel {
+        // Add nucleotide preceding an indel to the output
+        // (.vcf does not like empty bases in REF or ALT)
+        //
+        // Note need to decrement query_pos by 1 later
+        let alt_bases = [vec![u8_to_base(ref_seq[variant.query_pos - 1])], variant.ref_chars.iter().map(|nt| u8_to_base(*nt)).collect::<Vec<Base>>()].concat();
+        let ref_bases = [vec![ref_seq[variant.query_pos - 1] as char], variant.query_chars.iter().map(|nt| *nt as char).collect::<Vec<char>>()].concat().iter().collect::<String>();
+        (alt_bases, ref_bases)
+    } else {
+        let alt_bases = variant.ref_chars.iter().map(|nt| u8_to_base(*nt)).collect::<Vec<Base>>();
+        let ref_bases = variant.query_chars.iter().map(|nt| *nt as char).collect::<String>();
+        (alt_bases, ref_bases)
+    };
+    let alt_allele = vec![Allele::Bases(alt_bases)];
+    let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String("1".to_string()))]]);
+
+    let mut record_builder = noodles_vcf::Record::builder()
+        .set_chromosome(
+            contig_name
+                .parse()
+                .expect("Invalid chromosome name"),
+        )
+        .set_position(Position::from(variant.query_pos + 1 - is_indel as usize * (1 + (variant.ref_chars.len() as isize - variant.query_chars.len() as isize).unsigned_abs())))
+        .set_reference_bases(ref_bases.parse().expect("Reference bases"))
+        .set_alternate_bases(AlternateBases::from(alt_allele))
+        .set_genotypes(genotypes);
+
+    if variant.ref_chars.len() != 1 || variant.query_chars.len() != 1 {
+        record_builder = record_builder.set_info("INDEL".parse().expect("Parsed string"));
+    }
+
+    record_builder.build().expect("Build .vcf record")
+}
+
 /// Write the header of a .vcf file
 pub fn write_vcf_header<W: Write>(f: &mut W,
                               ref_name: &str,
@@ -83,6 +153,7 @@ pub fn write_vcf_header<W: Write>(f: &mut W,
 pub fn write_vcf_contents<W: Write>(f: &mut W,
                                     header: &noodles_vcf::Header,
                                     variants: &[Variant],
+                                    ref_seq: &[u8],
                                     contig_header: &str,
 ) -> Result<(), std::io::Error> {
     let mut writer = noodles_vcf::Writer::new(f);
@@ -94,28 +165,17 @@ pub fn write_vcf_contents<W: Write>(f: &mut W,
     let contig_name = header_contents.next().expect("Contig name");
 
     variants.iter().for_each(|variant| {
-        let alt_bases = variant.ref_chars.iter().map(|nt| u8_to_base(*nt)).collect::<Vec<Base>>();
-        let alt_allele = vec![Allele::Bases(alt_bases)];
-        let ref_bases = variant.query_chars.iter().map(|nt| *nt as char).collect::<String>();
-        let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String("1".to_string()))]]);
-
-        let mut record_builder = noodles_vcf::Record::builder()
-            .set_chromosome(
-                contig_name
-                    .parse()
-                    .expect("Invalid chromosome name"),
-            )
-            .set_position(Position::from(variant.query_pos))
-            .set_reference_bases(ref_bases.parse().expect("Reference bases"))
-            .set_alternate_bases(AlternateBases::from(alt_allele))
-            .set_genotypes(genotypes);
-
-        if variant.ref_chars.len() != 1 || variant.query_chars.len() != 1 {
-            record_builder = record_builder.set_info("INDEL".parse().expect("Parsed string"));
+        let flanking = split_flanking_variants(&variant.ref_chars, &variant.query_chars, variant.query_pos);
+        if flanking.is_some() {
+            let (var1, var2) = flanking.unwrap();
+            let record1 = build_vcf_record(&var1, ref_seq, &keys, contig_name);
+            let record2 = build_vcf_record(&var2, ref_seq, &keys, contig_name);
+            writer.write_record(header, &record1).expect("Wrote .vcf record");
+            writer.write_record(header, &record2).expect("Wrote .vcf record");
+        } else {
+            let record = build_vcf_record(variant, ref_seq, &keys, contig_name);
+            writer.write_record(header, &record).expect("Wrote .vcf record");
         }
-        let record = record_builder.build().expect("Could not construct record");
-
-        writer.write_record(header, &record).expect("Wrote .vcf record");
     });
     Ok(())
 }
