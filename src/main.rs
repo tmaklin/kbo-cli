@@ -325,6 +325,7 @@ fn main() {
 
             let mut map_opts = kbo::MapOpts::default();
             map_opts.max_error_prob = *max_error_prob;
+            map_opts.sbwt_build_opts = sbwt_build_options.clone();
 
             rayon::ThreadPoolBuilder::new()
                 .num_threads(*num_threads)
@@ -342,7 +343,7 @@ fn main() {
 
                 let mut res: Vec<u8> = Vec::new();
                 ref_data.iter().for_each(|(_, ref_seq)| {
-                    res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts));
+                    res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts.clone()));
                 });
                 let _ = writeln!(&mut stdout.lock(),
                                  ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
