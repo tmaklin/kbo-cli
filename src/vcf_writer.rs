@@ -105,7 +105,7 @@ pub fn write_vcf_contents<W: Write>(f: &mut W,
                     .parse()
                     .expect("Invalid chromosome name"),
             )
-            .set_position(Position::from(variant.query_pos + (variant.query_chars.len() as i64 - variant.ref_chars.len() as i64) as usize))
+            .set_position(Position::from(variant.query_pos))
             .set_reference_bases(ref_bases.parse().expect("Reference bases"))
             .set_alternate_bases(AlternateBases::from(alt_allele))
             .set_genotypes(genotypes);
