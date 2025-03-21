@@ -94,9 +94,9 @@ pub fn write_vcf_contents<W: Write>(f: &mut W,
     let contig_name = header_contents.next().expect("Contig name");
 
     variants.iter().for_each(|variant| {
-        let alt_bases = variant.query_chars.iter().map(|nt| u8_to_base(*nt)).collect::<Vec<Base>>();
+        let alt_bases = variant.ref_chars.iter().map(|nt| u8_to_base(*nt)).collect::<Vec<Base>>();
         let alt_allele = vec![Allele::Bases(alt_bases)];
-        let ref_bases = variant.ref_chars.iter().map(|nt| *nt as char).collect::<String>();
+        let ref_bases = variant.query_chars.iter().map(|nt| *nt as char).collect::<String>();
         let genotypes = Genotypes::new(keys.clone(), vec![vec![Some(Value::String("1".to_string()))]]);
 
         let mut record_builder = noodles_vcf::Record::builder()
