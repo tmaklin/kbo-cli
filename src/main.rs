@@ -225,7 +225,7 @@ fn main() {
                                       let aln_len = aln.end - aln.start + 1;
                                       let aln_start = if *strand == '+' { aln.start } else { query_bases - aln.end + 1 };
                                       let aln_end = if *strand == '+' { aln.end } else { query_bases - aln.start };
-                                      let coverage = (aln_len as f64 - aln.gap_bases as f64)/(*ref_bases as f64) * 100_f64;
+                                      let coverage = (aln.matches as f64 + aln.mismatches as f64)/(*ref_bases as f64) * 100_f64;
                                       let identity = (aln.matches as f64)/(aln_len as f64) * 100_f64;
                     let _ = writeln!(&mut stdout.lock(),
                                      "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t{:.2}\t{}\t{}",
