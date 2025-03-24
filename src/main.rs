@@ -222,8 +222,8 @@ fn main() {
                 // Print results with query and ref name added
                 run_lengths.iter().filter(|x| x.0.end - x.0.start + 1 >= *min_len as usize)
                                   .for_each(|(aln, strand, ref_contig, query_contig, ref_bases, query_bases)| {
-                                      let aln_len = aln.end - aln.start + 1;
-                                      let aln_start = if *strand == '+' { aln.start } else { query_bases - aln.end + 1 };
+                                      let aln_len = aln.end - aln.start;
+                                      let aln_start = if *strand == '+' { aln.start } else { query_bases - aln.end } + 1;
                                       let aln_end = if *strand == '+' { aln.end } else { query_bases - aln.start };
                                       let coverage = (aln.matches as f64 + aln.mismatches as f64)/(*ref_bases as f64) * 100_f64;
                                       let identity = (aln.matches as f64)/(aln_len as f64) * 100_f64;
@@ -233,8 +233,8 @@ fn main() {
                                      aln_start,
                                      aln_end,
                                      strand,
-                                     aln.end - aln.start + 1,
-                                     aln.mismatches - aln.gap_bases,
+                                     aln.end - aln.start,
+                                     aln.mismatches,
                                      aln.gap_bases,
                                      aln.gap_opens,
                                      identity,
