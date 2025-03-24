@@ -191,9 +191,9 @@ fn main() {
             println!("query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
             let stdout = std::io::stdout();
             query_files.iter().for_each(|file| {
-                let mut run_lengths: Vec<(kbo::format::RLE, char, String, String, usize)> = indexes.par_iter().map(|((sbwt, lcs), ref_contig, ref_bases)| {
+                let mut run_lengths: Vec<(kbo::format::RLE, char, String, String, usize, usize)> = indexes.par_iter().map(|((sbwt, lcs), ref_contig, ref_bases)| {
                     let mut reader = needletail::parse_fastx_file(file).expect("valid path/file");
-                    let mut res: Vec<(kbo::format::RLE, char, String, String, usize)> = Vec::new();
+                    let mut res: Vec<(kbo::format::RLE, char, String, String, usize, usize)> = Vec::new();
                     while let Some(seqrec) = read_from_fastx_parser(&mut *reader) {
                         let query_contig = std::str::from_utf8(seqrec.id()).expect("UTF-8");
                         let seq = seqrec.normalize(true);
@@ -202,7 +202,7 @@ fn main() {
                                    .iter()
                                    .map(|x| (*x, '+',
                                              ref_contig.clone(), query_contig.to_string().clone(),
-                                             *ref_bases
+                                             *ref_bases, seq.len()
                                    )).collect());
 
                         // Add local alignments for reverse _complement
@@ -210,26 +210,28 @@ fn main() {
                                    .iter()
                                    .map(|x| (*x, '-',
                                              ref_contig.clone(), query_contig.to_string().clone(),
-                                             *ref_bases
+                                             *ref_bases, seq.len()
                                    )).collect());
                     }
                     res
                 }).flatten().collect();
 
                 // Sort by q.start
-                run_lengths.sort_by_key(|(aln, _, _, _, _)| aln.start);
+                run_lengths.sort_by_key(|(aln, _, _, _, _, _)| aln.start);
 
                 // Print results with query and ref name added
                 run_lengths.iter().filter(|x| x.0.end - x.0.start + 1 >= *min_len as usize)
-                                  .for_each(|(aln, strand, ref_contig, query_contig, ref_bases)| {
+                                  .for_each(|(aln, strand, ref_contig, query_contig, ref_bases, query_bases)| {
                                       let aln_len = aln.end - aln.start + 1;
+                                      let aln_start = if *strand == '+' { aln.start } else { query_bases - aln.end + 1 };
+                                      let aln_end = if *strand == '+' { aln.end } else { query_bases - aln.start };
                                       let coverage = (aln_len as f64)/(*ref_bases as f64) * 100_f64;
                                       let identity = (aln.matches as f64)/(aln_len as f64) * 100_f64;
                     let _ = writeln!(&mut stdout.lock(),
                                      "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t{:.2}\t{}\t{}",
                                      file, ref_file.clone().unwrap(),
-                                     aln.start,
-                                     aln.end,
+                                     aln_start,
+                                     aln_end,
                                      strand,
                                      aln.end - aln.start + 1,
                                      aln.mismatches,
