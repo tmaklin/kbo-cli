@@ -22,6 +22,7 @@ use rayon::iter::IntoParallelRefIterator;
 
 // Command-line interface
 mod cli;
+mod vcf_writer;
 
 // Given a needletail parser, reads the next contig sequence
 fn read_from_fastx_parser(
@@ -40,13 +41,14 @@ fn read_from_fastx_parser(
 // Reads all sequence data from a fastX file
 fn read_fastx_file(
     file: &str,
-) -> Vec<Vec<u8>> {
-    let mut seq_data: Vec<Vec<u8>> = Vec::new();
+) -> Vec<(String, Vec<u8>)> {
+    let mut seq_data: Vec<(String, Vec<u8>)> = Vec::new();
     let mut reader = needletail::parse_fastx_file(file).unwrap_or_else(|_| panic!("Expected valid fastX file at {}", file));
-	while let Some(rec) = read_from_fastx_parser(&mut *reader) {
-		let seqrec = rec.normalize(true);
-		seq_data.push(seqrec.to_vec());
-	}
+    while let Some(rec) = read_from_fastx_parser(&mut *reader) {
+        let seqrec = rec.normalize(true);
+        let seqname = String::from_utf8(rec.id().to_vec()).expect("UTF-8");
+        seq_data.push((seqname, seqrec.to_vec()));
+    }
     seq_data
 }
 
@@ -96,7 +98,7 @@ fn main() {
         }) => {
 			init_log(if *verbose { 2 } else { 1 });
 
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
 			sbwt_build_options.k = *kmer_size;
 			sbwt_build_options.num_threads = *num_threads;
 			sbwt_build_options.prefix_precalc = *prefix_precalc;
@@ -107,7 +109,7 @@ fn main() {
 			info!("Building SBWT index from {} files...", seq_files.len());
 			let mut seq_data: Vec<Vec<u8>> = Vec::new();
 			seq_files.iter().for_each(|file| {
-				seq_data.append(&mut read_fastx_file(file));
+				seq_data.append(&mut read_fastx_file(file).into_iter().map(|(_, seq)| seq).collect::<Vec<Vec<u8>>>());
 			});
 
 			let (sbwt, lcs) = kbo::build(&seq_data, sbwt_build_options);
@@ -134,7 +136,7 @@ fn main() {
 			verbose,
         }) => {
 			init_log(if *verbose { 2 } else { 1 });
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
 			sbwt_build_options.k = *kmer_size;
 			sbwt_build_options.num_threads = *num_threads;
 			sbwt_build_options.prefix_precalc = *prefix_precalc;
@@ -161,7 +163,7 @@ fn main() {
 				info!("Building SBWT from file {}...", ref_file.as_ref().unwrap());
 
 				if !*detailed {
-					let ref_data = read_fastx_file(ref_file.as_ref().unwrap());
+					let ref_data = read_fastx_file(ref_file.as_ref().unwrap()).into_iter().map(|(_, seq)| seq).collect::<Vec<Vec<u8>>>();
 					let n_bases = ref_data.iter().map(|x| x.len()).reduce(|a, b| a + b).unwrap();
 					indexes.push((kbo::index::build_sbwt_from_vecs(&ref_data, &Some(sbwt_build_options)), ref_file.clone().unwrap(), n_bases));
 				} else {
@@ -238,57 +240,115 @@ fn main() {
 				});
 			});
 		},
+        Some(cli::Commands::Call{
+            query_file,
+            ref_file,
+            max_error_prob,
+            num_threads,
+            kmer_size,
+            prefix_precalc,
+            dedup_batches,
+            verbose,
+        }) => {
+            init_log(if *verbose { 2 } else { 1 });
+
+            let mut sbwt_build_options = kbo::BuildOpts::default();
+            // These are required for the subcommand to work correctly
+            sbwt_build_options.add_revcomp = true;
+            sbwt_build_options.build_select = true;
+            // These can be adjusted
+            sbwt_build_options.k = *kmer_size;
+            sbwt_build_options.num_threads = *num_threads;
+            sbwt_build_options.prefix_precalc = *prefix_precalc;
+            sbwt_build_options.dedup_batches = *dedup_batches;
+
+            let mut call_opts = kbo::CallOpts::default();
+            call_opts.sbwt_build_opts = sbwt_build_options.clone();
+            call_opts.max_error_prob = *max_error_prob;
+
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(*num_threads)
+                .thread_name(|i| format!("rayon-thread-{}", i))
+                .build()
+                .unwrap();
+
+            let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file(ref_file.to_str().unwrap());
+
+            let stdout = std::io::stdout();
+
+            let query_data: Vec<Vec<u8>> = read_fastx_file(query_file.to_str().unwrap()).iter().map(|(_, seq)| seq.clone()).collect();
+            let (sbwt_query, lcs_query) = kbo::index::build_sbwt_from_vecs(&query_data, &Some(sbwt_build_options.clone()));
+
+            // Will map separately against each contig in the reference
+            let vcf_header = vcf_writer::write_vcf_header(&mut stdout.lock(), ref_file.to_str().unwrap(),
+                                                          &ref_data.iter().map(|(contig_name, contig_seq)| {
+                                                              (contig_name.clone(), contig_seq.len())
+                                                          }).collect::<Vec<(String, usize)>>())
+                .expect("Write header to .vcf file");
+
+            ref_data.iter().for_each(|(ref_contig_header, ref_seq)| {
+                let calls = kbo::call(&sbwt_query, &lcs_query, ref_seq, call_opts.clone());
+                vcf_writer::write_vcf_contents(
+                    &mut stdout.lock(),
+                    &vcf_header,
+                    &calls,
+                    ref_seq,
+                    ref_contig_header,
+                ).expect("Wrote .vcf record");
+            });
+        }
 
         Some(cli::Commands::Map {
-			query_files,
-			ref_file,
-			max_error_prob,
-			num_threads,
+            query_files,
+            ref_file,
+            max_error_prob,
+            num_threads,
             kmer_size,
-			prefix_precalc,
-			dedup_batches,
-			mem_gb,
-			temp_dir,
-			verbose,
+            prefix_precalc,
+            dedup_batches,
+            mem_gb,
+            temp_dir,
+            verbose,
         }) => {
-			init_log(if *verbose { 2 } else { 1 });
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
-			// These are required for the subcommand to work correctly
-			sbwt_build_options.add_revcomp = true;
-			sbwt_build_options.build_select = true;
-			// These can be adjusted
-			sbwt_build_options.k = *kmer_size;
-			sbwt_build_options.num_threads = *num_threads;
-			sbwt_build_options.prefix_precalc = *prefix_precalc;
-			sbwt_build_options.dedup_batches = *dedup_batches;
-			sbwt_build_options.mem_gb = *mem_gb;
-			sbwt_build_options.temp_dir = temp_dir.clone();
+            init_log(if *verbose { 2 } else { 1 });
+            let mut sbwt_build_options = kbo::BuildOpts::default();
+            // These are required for the subcommand to work correctly
+            sbwt_build_options.add_revcomp = true;
+            sbwt_build_options.build_select = true;
+            // These can be adjusted
+            sbwt_build_options.k = *kmer_size;
+            sbwt_build_options.num_threads = *num_threads;
+            sbwt_build_options.prefix_precalc = *prefix_precalc;
+            sbwt_build_options.dedup_batches = *dedup_batches;
+            sbwt_build_options.mem_gb = *mem_gb;
+            sbwt_build_options.temp_dir = temp_dir.clone();
 
-			let mut map_opts = kbo::MapOpts::default();
-			map_opts.max_error_prob = *max_error_prob;
+            let mut map_opts = kbo::MapOpts::default();
+            map_opts.max_error_prob = *max_error_prob;
+            map_opts.sbwt_build_opts = sbwt_build_options.clone();
 
-			rayon::ThreadPoolBuilder::new()
-				.num_threads(*num_threads)
-				.thread_name(|i| format!("rayon-thread-{}", i))
-				.build()
-				.unwrap();
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(*num_threads)
+                .thread_name(|i| format!("rayon-thread-{}", i))
+                .build()
+                .unwrap();
 
-			let ref_data = read_fastx_file(ref_file);
+            let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file(ref_file);
 
-			let stdout = std::io::stdout();
-			query_files.par_iter().for_each(|query_file| {
-				let query_data = read_fastx_file(query_file);
-				let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&query_data, &Some(sbwt_build_options.clone()));
+            let stdout = std::io::stdout();
 
-				let mut res: Vec<u8> = Vec::new();
-				ref_data.iter().for_each(|ref_contig| {
-					res.append(&mut kbo::map(ref_contig, &sbwt, &lcs, map_opts));
-				});
+            query_files.iter().for_each(|query_file| {
+                let contigs: Vec<Vec<u8>> = read_fastx_file(query_file).iter().map(|(_, seq)| seq.clone()).collect();
+                let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone()));
 
-				let _ = writeln!(&mut stdout.lock(),
-								 ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
-			});
-		},
-		None => {}
+                let mut res: Vec<u8> = Vec::new();
+                ref_data.iter().for_each(|(_, ref_seq)| {
+                    res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts.clone()));
+                });
+                let _ = writeln!(&mut stdout.lock(),
+                                 ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
+            });
+        },
+        None => {}
     }
 }
