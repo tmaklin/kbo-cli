@@ -167,6 +167,9 @@ pub enum Commands {
         query_files: Vec<String>,
 
         // Input options
+        // // Input list
+        #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input")]
+        input_list: Option<String>,
         // // Reference file
         #[arg(short = 'r', long = "reference", required = true, help_heading = "Input")]
         ref_file: String,

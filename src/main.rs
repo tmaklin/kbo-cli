@@ -368,6 +368,7 @@ fn main() {
         Some(cli::Commands::Map {
             query_files,
             ref_file,
+            input_list,
             max_error_prob,
             num_threads,
             kmer_size,
@@ -400,13 +401,19 @@ fn main() {
                 .build()
                 .unwrap();
 
+            let mut in_files: Vec<(String, PathBuf)> = query_files.iter().map(|file| (file.clone(), PathBuf::from(file))).collect();
+            if let Some(list) = input_list {
+                let mut contents = read_input_list(list, b'\t');
+                in_files.append(&mut contents);
+            }
+
             let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file(ref_file);
 
             let stdout = std::io::stdout();
 
             let mut first_write = true;
-            query_files.iter().for_each(|query_file| {
-                let contigs: Vec<Vec<u8>> = read_fastx_file(query_file).iter().map(|(_, seq)| seq.clone()).collect();
+            in_files.iter().for_each(|(file, path)| {
+                let contigs: Vec<Vec<u8>> = read_fastx_file(path.to_str().unwrap()).iter().map(|(_, seq)| seq.clone()).collect();
                 let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone()));
 
                 let mut res: Vec<u8> = Vec::new();
@@ -419,7 +426,7 @@ fn main() {
                     first_write = false;
                 }
                 let _ = writeln!(&mut stdout.lock(),
-                                 ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
+                                 ">{}\n{}", file, std::str::from_utf8(&res).expect("UTF-8"));
             });
         },
         None => {}
