@@ -12,6 +12,7 @@
 // at your option.
 //
 use std::io::Write;
+use std::path::PathBuf;
 
 use clap::Parser;
 use log::info;
@@ -52,6 +53,33 @@ fn read_fastx_file(
     seq_data
 }
 
+fn read_input_list(
+    input_list_file: &String,
+    delimiter: u8
+) -> Vec<(String, PathBuf)> {
+    let fs = match std::fs::File::open(input_list_file) {
+        Ok(fs) => fs,
+        Err(e) => panic!("  Error in reading --input-list: {}", e),
+    };
+
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
+        .has_headers(false)
+        .from_reader(fs);
+
+    reader.records().map(|line| {
+        if let Ok(record) = line {
+            if record.len() > 1 {
+                (record[0].to_string(), PathBuf::from(record[1].to_string()))
+            } else {
+                (record[0].to_string(), PathBuf::from(record[0].to_string()))
+            }
+        } else {
+            panic!("  Error in reading --input-list: {}", input_list_file);
+        }
+    }).collect::<Vec<(String, PathBuf)>>()
+}
+
 /// Initializes the logger with verbosity given in `log_max_level`.
 fn init_log(log_max_level: usize) {
     stderrlog::new()
@@ -86,39 +114,47 @@ fn main() {
     // Subcommands:
     match &cli.command {
         Some(cli::Commands::Build {
-			seq_files,
-			output_prefix,
+            seq_files,
+            input_list,
+            output_prefix,
             kmer_size,
-			prefix_precalc,
-			dedup_batches,
-			num_threads,
-			mem_gb,
-			temp_dir,
-			verbose,
+            prefix_precalc,
+            dedup_batches,
+            num_threads,
+            mem_gb,
+            temp_dir,
+            verbose,
         }) => {
-			init_log(if *verbose { 2 } else { 1 });
+            init_log(if *verbose { 2 } else { 1 });
 
             let mut sbwt_build_options = kbo::BuildOpts::default();
-			sbwt_build_options.k = *kmer_size;
-			sbwt_build_options.num_threads = *num_threads;
-			sbwt_build_options.prefix_precalc = *prefix_precalc;
-			sbwt_build_options.dedup_batches = *dedup_batches;
-			sbwt_build_options.mem_gb = *mem_gb;
-			sbwt_build_options.temp_dir = temp_dir.clone();
+            sbwt_build_options.k = *kmer_size;
+            sbwt_build_options.num_threads = *num_threads;
+            sbwt_build_options.prefix_precalc = *prefix_precalc;
+            sbwt_build_options.dedup_batches = *dedup_batches;
+            sbwt_build_options.mem_gb = *mem_gb;
+            sbwt_build_options.temp_dir = temp_dir.clone();
 
-			info!("Building SBWT index from {} files...", seq_files.len());
-			let mut seq_data: Vec<Vec<u8>> = Vec::new();
-			seq_files.iter().for_each(|file| {
-				seq_data.append(&mut read_fastx_file(file).into_iter().map(|(_, seq)| seq).collect::<Vec<Vec<u8>>>());
-			});
+            let mut in_files = seq_files.clone();
+            if let Some(list) = input_list {
+                let contents = read_input_list(list, b'\t');
+                let contents_iter = contents.iter().map(|(_, path)| path.to_str().unwrap().to_string());
+                in_files.extend(contents_iter);
+            }
 
-			let (sbwt, lcs) = kbo::build(&seq_data, sbwt_build_options);
+            info!("Building SBWT index from {} files...", in_files.len());
+            let mut seq_data: Vec<Vec<u8>> = Vec::new();
+            in_files.iter().for_each(|file| {
+                seq_data.append(&mut read_fastx_file(file).into_iter().map(|(_, seq)| seq).collect::<Vec<Vec<u8>>>());
+            });
 
-			info!("Serializing SBWT index to {}.sbwt ...", output_prefix.as_ref().unwrap());
-			info!("Serializing LCS array to {}.lcs ...", output_prefix.as_ref().unwrap());
-			kbo::index::serialize_sbwt(output_prefix.as_ref().unwrap(), &sbwt, &lcs);
+            let (sbwt, lcs) = kbo::build(&seq_data, sbwt_build_options);
 
-		},
+            info!("Serializing SBWT index to {}.sbwt ...", output_prefix.as_ref().unwrap());
+            info!("Serializing LCS array to {}.lcs ...", output_prefix.as_ref().unwrap());
+            kbo::index::serialize_sbwt(output_prefix.as_ref().unwrap(), &sbwt, &lcs);
+
+        },
 
         Some(cli::Commands::Find {
             query_files,
