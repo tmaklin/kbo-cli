@@ -341,6 +341,7 @@ fn main() {
 
             let stdout = std::io::stdout();
 
+            let mut first_write = true;
             query_files.iter().for_each(|query_file| {
                 let contigs: Vec<Vec<u8>> = read_fastx_file(query_file).iter().map(|(_, seq)| seq.clone()).collect();
                 let (sbwt, lcs) = kbo::index::build_sbwt_from_vecs(&contigs, &Some(sbwt_build_options.clone()));
@@ -349,6 +350,11 @@ fn main() {
                 ref_data.iter().for_each(|(_, ref_seq)| {
                     res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts.clone()));
                 });
+                if first_write {
+                    let _ = writeln!(&mut stdout.lock(),
+                                 ">{}\n{}", ref_file, std::str::from_utf8(&ref_data.iter().flat_map(|x| x.1.clone()).collect::<Vec<u8>>()).expect("UTF-8"));
+                    first_write = false;
+                }
                 let _ = writeln!(&mut stdout.lock(),
                                  ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));
             });
