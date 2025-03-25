@@ -99,7 +99,7 @@ fn main() {
         }) => {
 			init_log(if *verbose { 2 } else { 1 });
 
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
 			sbwt_build_options.k = *kmer_size;
 			sbwt_build_options.num_threads = *num_threads;
 			sbwt_build_options.prefix_precalc = *prefix_precalc;
@@ -137,7 +137,7 @@ fn main() {
 			verbose,
         }) => {
 			init_log(if *verbose { 2 } else { 1 });
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
 			sbwt_build_options.k = *kmer_size;
 			sbwt_build_options.num_threads = *num_threads;
 			sbwt_build_options.prefix_precalc = *prefix_precalc;
@@ -253,7 +253,7 @@ fn main() {
         }) => {
             init_log(if *verbose { 2 } else { 1 });
 
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
             // These are required for the subcommand to work correctly
             sbwt_build_options.add_revcomp = true;
             sbwt_build_options.build_select = true;
@@ -262,6 +262,10 @@ fn main() {
             sbwt_build_options.num_threads = *num_threads;
             sbwt_build_options.prefix_precalc = *prefix_precalc;
             sbwt_build_options.dedup_batches = *dedup_batches;
+
+            let mut call_opts = kbo::CallOpts::default();
+            call_opts.sbwt_build_opts = sbwt_build_options.clone();
+            call_opts.max_error_prob = *max_error_prob;
 
             rayon::ThreadPoolBuilder::new()
                 .num_threads(*num_threads)
@@ -284,27 +288,12 @@ fn main() {
                 .expect("Write header to .vcf file");
 
             ref_data.iter().for_each(|(ref_contig_header, ref_seq)| {
-                let (sbwt_ref, lcs_ref) = kbo::index::build_sbwt_from_vecs(&[ref_seq.clone()], &Some(sbwt_build_options.clone()));
-                let calls = match sbwt_query {
-                SbwtIndexVariant::SubsetMatrix(ref sbwt_query) => {
-                match sbwt_ref {
-                SbwtIndexVariant::SubsetMatrix(ref sbwt_ref) => {
-                kbo::variant_calling::call_variants(
-                    sbwt_query,
-                    &lcs_query,
-                    sbwt_ref,
-                    &lcs_ref,
-                    ref_seq,
-                    *max_error_prob,
-                )
-                },
-                }
-                },
-                };
+                let calls = kbo::call(&sbwt_query, &lcs_query, ref_seq, call_opts.clone());
                 vcf_writer::write_vcf_contents(
                     &mut stdout.lock(),
                     &vcf_header,
                     &calls,
+                    ref_seq,
                     ref_contig_header,
                 ).expect("Wrote .vcf record");
             });
@@ -323,7 +312,7 @@ fn main() {
             verbose,
         }) => {
             init_log(if *verbose { 2 } else { 1 });
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
             // These are required for the subcommand to work correctly
             sbwt_build_options.add_revcomp = true;
             sbwt_build_options.build_select = true;
@@ -337,6 +326,7 @@ fn main() {
 
             let mut map_opts = kbo::MapOpts::default();
             map_opts.max_error_prob = *max_error_prob;
+            map_opts.sbwt_build_opts = sbwt_build_options.clone();
 
             rayon::ThreadPoolBuilder::new()
                 .num_threads(*num_threads)
@@ -354,7 +344,7 @@ fn main() {
 
                 let mut res: Vec<u8> = Vec::new();
                 ref_data.iter().for_each(|(_, ref_seq)| {
-                    res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts));
+                    res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts.clone()));
                 });
                 let _ = writeln!(&mut stdout.lock(),
                                  ">{}\n{}", query_file, std::str::from_utf8(&res).expect("UTF-8"));

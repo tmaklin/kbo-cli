@@ -65,8 +65,8 @@ pub enum Commands {
 
     // Call variants in query relative to a reference
     Call{
-        // Input fasta or fastq query file
-        #[arg(long = "query", short = 'q', required = true, help_heading = "Input")]
+        // Input fasta or fastq query file(s)
+        #[arg(group = "input", required = true)]
         query_file: PathBuf,
 
         // Reference fasta or fastq file
