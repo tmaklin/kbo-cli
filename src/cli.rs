@@ -35,7 +35,7 @@ pub enum Commands {
         input_list: Option<String>,
 
         // Outputs
-        #[arg(short = 'o', long = "output-prefix", required = false, required = true, help_heading = "Output")]
+        #[arg(short = 'o', long = "output-prefix", required = true, help_heading = "Output")]
         output_prefix: Option<String>,
 
         // Build parameters
