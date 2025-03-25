@@ -114,6 +114,11 @@ pub enum Commands {
         #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input")]
         input_list: Option<String>,
 
+        // Output options
+        // // Output file
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
+        output_file: Option<String>,
+
         // Reference
         // // Sequence file
         #[arg(short = 'r', long = "reference", group = "reference", help_heading = "Input")]

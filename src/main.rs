@@ -160,6 +160,7 @@ fn main() {
             query_files,
             input_list,
             ref_file,
+            output_file,
             index_prefix,
             detailed,
             min_len,
@@ -231,9 +232,23 @@ fn main() {
                 in_files.append(&mut contents);
             }
 
+            let mut ofs = if output_file.is_some() {
+                let ofs = match std::fs::File::create(output_file.as_ref().unwrap()) {
+                    Ok(file) => file,
+                    Err(e) => panic!("  Error in opening --output: {}", e),
+                };
+                Some(ofs)
+            } else {
+                None
+            };
+
             info!("Querying SBWT index...");
-            println!("query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
-            let stdout = std::io::stdout();
+            if let Some(ofs) = &mut ofs {
+                let _ = ofs.write(b"query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
+            } else {
+                let stdout = std::io::stdout();
+                let _ = stdout.lock().write(b"query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
+            }
             in_files.iter().for_each(|(file, path)| {
                 let mut run_lengths: Vec<(kbo::format::RLE, char, String, String, usize, usize)> = indexes.par_iter().map(|((sbwt, lcs), ref_contig, ref_bases)| {
                     let mut reader = needletail::parse_fastx_file(path).ok().unwrap();
@@ -271,20 +286,38 @@ fn main() {
                                       let aln_end = if *strand == '+' { aln.end } else { query_bases - aln.start };
                                       let coverage = (aln.matches as f64 + aln.mismatches as f64)/(*ref_bases as f64) * 100_f64;
                                       let identity = (aln.matches as f64)/(aln_len as f64) * 100_f64;
-                    let _ = writeln!(&mut stdout.lock(),
-                                     "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t{:.2}\t{}\t{}",
-                                     file, ref_file.clone().unwrap(),
-                                     aln_start,
-                                     aln_end,
-                                     strand,
-                                     aln.end - aln.start,
-                                     aln.mismatches,
-                                     aln.gap_bases,
-                                     aln.gap_opens,
-                                     identity,
-                                     coverage,
-                                     query_contig,
-                                     ref_contig);
+                                      if ofs.is_some() {
+                                          let _ = writeln!(&mut ofs.as_ref().unwrap(),
+                                                           "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t{:.2}\t{}\t{}",
+                                                           file, ref_file.clone().unwrap(),
+                                                           aln_start,
+                                                           aln_end,
+                                                           strand,
+                                                           aln.end - aln.start,
+                                                           aln.mismatches,
+                                                           aln.gap_bases,
+                                                           aln.gap_opens,
+                                                           identity,
+                                                           coverage,
+                                                           query_contig,
+                                                           ref_contig);
+                                      } else {
+                                          let stdout = std::io::stdout();
+                                          let _ = writeln!(&mut stdout.lock(),
+                                                           "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t{:.2}\t{}\t{}",
+                                                           file, ref_file.clone().unwrap(),
+                                                           aln_start,
+                                                           aln_end,
+                                                           strand,
+                                                           aln.end - aln.start,
+                                                           aln.mismatches,
+                                                           aln.gap_bases,
+                                                           aln.gap_opens,
+                                                           identity,
+                                                           coverage,
+                                                           query_contig,
+                                                           ref_contig);
+                                      }
                 });
             });
         },
