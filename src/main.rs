@@ -19,7 +19,6 @@ use needletail::Sequence;
 use needletail::parser::SequenceRecord;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
-use sbwt::SbwtIndexVariant;
 
 // Command-line interface
 mod cli;
