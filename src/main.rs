@@ -98,7 +98,7 @@ fn main() {
         }) => {
 			init_log(if *verbose { 2 } else { 1 });
 
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
 			sbwt_build_options.k = *kmer_size;
 			sbwt_build_options.num_threads = *num_threads;
 			sbwt_build_options.prefix_precalc = *prefix_precalc;
@@ -137,7 +137,7 @@ fn main() {
             verbose,
         }) => {
             init_log(if *verbose { 2 } else { 1 });
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
             sbwt_build_options.k = *kmer_size;
             sbwt_build_options.num_threads = *num_threads;
             sbwt_build_options.prefix_precalc = *prefix_precalc;
@@ -256,7 +256,7 @@ fn main() {
         }) => {
             init_log(if *verbose { 2 } else { 1 });
 
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
             // These are required for the subcommand to work correctly
             sbwt_build_options.add_revcomp = true;
             sbwt_build_options.build_select = true;
@@ -315,7 +315,7 @@ fn main() {
             verbose,
         }) => {
             init_log(if *verbose { 2 } else { 1 });
-            let mut sbwt_build_options = kbo::index::BuildOpts::default();
+            let mut sbwt_build_options = kbo::BuildOpts::default();
             // These are required for the subcommand to work correctly
             sbwt_build_options.add_revcomp = true;
             sbwt_build_options.build_select = true;
