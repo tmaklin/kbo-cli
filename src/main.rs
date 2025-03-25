@@ -369,6 +369,7 @@ fn main() {
             query_files,
             ref_file,
             input_list,
+            output_file,
             max_error_prob,
             num_threads,
             kmer_size,
@@ -409,7 +410,15 @@ fn main() {
 
             let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file(ref_file);
 
-            let stdout = std::io::stdout();
+            let ofs = if output_file.is_some() {
+                let ofs = match std::fs::File::create(output_file.as_ref().unwrap()) {
+                    Ok(file) => file,
+                    Err(e) => panic!("  Error in opening --output: {}", e),
+                };
+                Some(ofs)
+            } else {
+                None
+            };
 
             let mut first_write = true;
             in_files.iter().for_each(|(file, path)| {
@@ -420,13 +429,27 @@ fn main() {
                 ref_data.iter().for_each(|(_, ref_seq)| {
                     res.append(&mut kbo::map(ref_seq, &sbwt, &lcs, map_opts.clone()));
                 });
-                if first_write {
+
+                if ofs.is_some() {
+
+                    if first_write {
+                        let _ = writeln!(&mut ofs.as_ref().unwrap(),
+                                         ">{}\n{}", ref_file, std::str::from_utf8(&ref_data.iter().flat_map(|x| x.1.clone()).collect::<Vec<u8>>()).expect("UTF-8"));
+                        first_write = false;
+                    }
+                    let _ = writeln!(&mut ofs.as_ref().unwrap(),
+                                     ">{}\n{}", file, std::str::from_utf8(&res).expect("UTF-8"));
+                } else {
+                    let stdout = std::io::stdout();
+
+                    if first_write {
+                        let _ = writeln!(&mut stdout.lock(),
+                                         ">{}\n{}", ref_file, std::str::from_utf8(&ref_data.iter().flat_map(|x| x.1.clone()).collect::<Vec<u8>>()).expect("UTF-8"));
+                        first_write = false;
+                    }
                     let _ = writeln!(&mut stdout.lock(),
-                                 ">{}\n{}", ref_file, std::str::from_utf8(&ref_data.iter().flat_map(|x| x.1.clone()).collect::<Vec<u8>>()).expect("UTF-8"));
-                    first_write = false;
+                                     ">{}\n{}", file, std::str::from_utf8(&res).expect("UTF-8"));
                 }
-                let _ = writeln!(&mut stdout.lock(),
-                                 ">{}\n{}", file, std::str::from_utf8(&res).expect("UTF-8"));
             });
         },
         None => {}

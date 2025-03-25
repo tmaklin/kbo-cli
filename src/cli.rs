@@ -174,6 +174,11 @@ pub enum Commands {
         #[arg(short = 'r', long = "reference", required = true, help_heading = "Input")]
         ref_file: String,
 
+        // Output options
+        // // Output file
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
+        output_file: Option<String>,
+
         // Parameters
         // // Upper bound for random match probability
         #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm")]
