@@ -283,6 +283,7 @@ fn main() {
         Some(cli::Commands::Call{
             query_file,
             ref_file,
+            output_file,
             max_error_prob,
             num_threads,
             kmer_size,
@@ -314,28 +315,54 @@ fn main() {
 
             let ref_data: Vec<(String, Vec<u8>)> = read_fastx_file(ref_file.to_str().unwrap());
 
-            let stdout = std::io::stdout();
-
             let query_data: Vec<Vec<u8>> = read_fastx_file(query_file.to_str().unwrap()).iter().map(|(_, seq)| seq.clone()).collect();
             let (sbwt_query, lcs_query) = kbo::index::build_sbwt_from_vecs(&query_data, &Some(sbwt_build_options.clone()));
 
             // Will map separately against each contig in the reference
-            let vcf_header = vcf_writer::write_vcf_header(&mut stdout.lock(), ref_file.to_str().unwrap(),
-                                                          &ref_data.iter().map(|(contig_name, contig_seq)| {
-                                                              (contig_name.clone(), contig_seq.len())
-                                                          }).collect::<Vec<(String, usize)>>())
-                .expect("Write header to .vcf file");
+            if output_file.is_some() {
+                // this is dumb, surely there is a way to pass stdout or the file?
+                let mut ofs = match std::fs::File::create(output_file.as_ref().unwrap()) {
+                    Ok(file) => file,
+                    Err(e) => panic!("  Error in opening --output: {}", e),
+                };
 
-            ref_data.iter().for_each(|(ref_contig_header, ref_seq)| {
-                let calls = kbo::call(&sbwt_query, &lcs_query, ref_seq, call_opts.clone());
-                vcf_writer::write_vcf_contents(
-                    &mut stdout.lock(),
-                    &vcf_header,
-                    &calls,
-                    ref_seq,
-                    ref_contig_header,
-                ).expect("Wrote .vcf record");
-            });
+                let vcf_header = vcf_writer::write_vcf_header(&mut ofs,
+                                                              ref_file.to_str().unwrap(),
+                                                              &ref_data.iter().map(|(contig_name, contig_seq)| {
+                                                                  (contig_name.clone(), contig_seq.len())
+                                                              }).collect::<Vec<(String, usize)>>())
+                    .expect("Write header to .vcf file");
+
+                ref_data.iter().for_each(|(ref_contig_header, ref_seq)| {
+                    let calls = kbo::call(&sbwt_query, &lcs_query, ref_seq, call_opts.clone());
+                    vcf_writer::write_vcf_contents(
+                        &mut ofs,
+                        &vcf_header,
+                        &calls,
+                        ref_seq,
+                        ref_contig_header,
+                    ).expect("Wrote .vcf record");
+                });
+            } else {
+                let stdout = std::io::stdout();
+                let vcf_header = vcf_writer::write_vcf_header(&mut stdout.lock(),
+                                                              ref_file.to_str().unwrap(),
+                                                              &ref_data.iter().map(|(contig_name, contig_seq)| {
+                                                                  (contig_name.clone(), contig_seq.len())
+                                                              }).collect::<Vec<(String, usize)>>())
+                    .expect("Write header to .vcf file");
+
+                ref_data.iter().for_each(|(ref_contig_header, ref_seq)| {
+                    let calls = kbo::call(&sbwt_query, &lcs_query, ref_seq, call_opts.clone());
+                    vcf_writer::write_vcf_contents(
+                        &mut stdout.lock(),
+                        &vcf_header,
+                        &calls,
+                        ref_seq,
+                        ref_contig_header,
+                    ).expect("Wrote .vcf record");
+                });
+            }
         }
 
         Some(cli::Commands::Map {

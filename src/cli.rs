@@ -68,13 +68,17 @@ pub enum Commands {
 
     // Call variants in query relative to a reference
     Call{
-        // Input fasta or fastq query file(s)
+        // Inputs
+        // // Input fasta or fastq query file(s)
         #[arg(group = "input", required = true)]
         query_file: PathBuf,
-
-        // Reference fasta or fastq file
+        // // Reference fasta or fastq file
         #[arg(long = "reference", short = 'r', required = true, help_heading = "Input")]
         ref_file: PathBuf,
+
+        // Outputs
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
+        output_file: Option<String>,
 
         // Upper bound for random match probability
         #[arg(long = "max-error-prob", default_value_t = 0.00000001, help_heading = "Algorithm")]
