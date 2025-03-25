@@ -31,8 +31,11 @@ pub enum Commands {
         #[arg(group = "input", required = true)]
         seq_files: Vec<String>,
 
+        #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input")]
+        input_list: Option<String>,
+
         // Outputs
-        #[arg(short = 'o', long = "output-prefix", required = false, help_heading = "Output")]
+        #[arg(short = 'o', long = "output-prefix", required = true, help_heading = "Output")]
         output_prefix: Option<String>,
 
         // Build parameters
@@ -65,16 +68,20 @@ pub enum Commands {
 
     // Call variants in query relative to a reference
     Call{
-        // Input fasta or fastq query file(s)
+        // Inputs
+        // // Input fasta or fastq query file(s)
         #[arg(group = "input", required = true)]
         query_file: PathBuf,
-
-        // Reference fasta or fastq file
+        // // Reference fasta or fastq file
         #[arg(long = "reference", short = 'r', required = true, help_heading = "Input")]
         ref_file: PathBuf,
 
+        // Outputs
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
+        output_file: Option<String>,
+
         // Upper bound for random match probability
-        #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm")]
+        #[arg(long = "max-error-prob", default_value_t = 0.00000001, help_heading = "Algorithm")]
         max_error_prob: f64,
 
         // Resources
@@ -99,9 +106,18 @@ pub enum Commands {
 
     // Find indexed k-mers in a query
     Find {
-        // Input fasta or fastq query file(s)
+        // Inputs
+        // // Input fasta or fastq query file(s)
         #[arg(group = "input", required = true)]
         query_files: Vec<String>,
+        // // Input list
+        #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input")]
+        input_list: Option<String>,
+
+        // Output options
+        // // Output file
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
+        output_file: Option<String>,
 
         // Reference
         // // Sequence file
@@ -160,9 +176,17 @@ pub enum Commands {
         query_files: Vec<String>,
 
         // Input options
+        // // Input list
+        #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input")]
+        input_list: Option<String>,
         // // Reference file
         #[arg(short = 'r', long = "reference", required = true, help_heading = "Input")]
         ref_file: String,
+
+        // Output options
+        // // Output file
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
+        output_file: Option<String>,
 
         // Parameters
         // // Upper bound for random match probability
