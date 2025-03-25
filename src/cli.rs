@@ -74,7 +74,7 @@ pub enum Commands {
         ref_file: PathBuf,
 
         // Upper bound for random match probability
-        #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm")]
+        #[arg(long = "max-error-prob", default_value_t = 0.00000001, help_heading = "Algorithm")]
         max_error_prob: f64,
 
         // Resources
