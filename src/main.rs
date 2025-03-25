@@ -412,6 +412,9 @@ fn main() {
             input_list,
             output_file,
             max_error_prob,
+            skip_gap_filling,
+            skip_variant_calling,
+            skip_formatting,
             num_threads,
             kmer_size,
             prefix_precalc,
@@ -436,6 +439,9 @@ fn main() {
             let mut map_opts = kbo::MapOpts::default();
             map_opts.max_error_prob = *max_error_prob;
             map_opts.sbwt_build_opts = sbwt_build_options.clone();
+            map_opts.fill_gaps = !*skip_gap_filling;
+            map_opts.call_variants = !*skip_variant_calling;
+            map_opts.format = !*skip_formatting;
 
             rayon::ThreadPoolBuilder::new()
                 .num_threads(*num_threads)
@@ -473,7 +479,7 @@ fn main() {
 
                 if ofs.is_some() {
 
-                    if first_write {
+                    if first_write && !*skip_formatting {
                         let _ = writeln!(&mut ofs.as_ref().unwrap(),
                                          ">{}\n{}", ref_file, std::str::from_utf8(&ref_data.iter().flat_map(|x| x.1.clone()).collect::<Vec<u8>>()).expect("UTF-8"));
                         first_write = false;
@@ -483,7 +489,7 @@ fn main() {
                 } else {
                     let stdout = std::io::stdout();
 
-                    if first_write {
+                    if first_write && !*skip_formatting {
                         let _ = writeln!(&mut stdout.lock(),
                                          ">{}\n{}", ref_file, std::str::from_utf8(&ref_data.iter().flat_map(|x| x.1.clone()).collect::<Vec<u8>>()).expect("UTF-8"));
                         first_write = false;
