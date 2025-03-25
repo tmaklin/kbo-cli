@@ -187,11 +187,20 @@ pub enum Commands {
         // // Output file
         #[arg(short = 'o', long = "output", required = false, help_heading = "Output")]
         output_file: Option<String>,
+        #[arg(long = "raw", default_value_t = false, help_heading = "Output")]
+        skip_formatting: bool,
 
         // Parameters
         // // Upper bound for random match probability
         #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm")]
         max_error_prob: f64,
+        // // Skip gap filling
+        #[arg(long = "no-gap-filling", default_value_t = false, help_heading = "Algorithm")]
+        skip_gap_filling: bool,
+        // // Skip variant calling
+        #[arg(long = "no-variant-calling", default_value_t = false, help_heading = "Algorithm")]
+        // // Don't format the results, return the raw translation
+        skip_variant_calling: bool,
 
         // Resources
         // // Threads
