@@ -18,7 +18,7 @@ path = "src/main.rs"
 ## core
 clap = { version = "4", features = ["derive"]}
 chrono = "0.4.40"
-kbo = "0.4.1"
+kbo = "0.5.0"
 log = "0.4.20"
 needletail = { version = "0.6.0", default-features = false, features = ["flate2"] }
 noodles-vcf = "0.49"
