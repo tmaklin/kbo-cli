@@ -158,6 +158,7 @@ fn main() {
 
         Some(cli::Commands::Find {
             query_files,
+            input_list,
             ref_file,
             index_prefix,
             detailed,
@@ -223,12 +224,19 @@ fn main() {
                 .build()
                 .unwrap();
 
+
+            let mut in_files: Vec<(String, PathBuf)> = query_files.iter().map(|file| (file.clone(), PathBuf::from(file))).collect();
+            if let Some(list) = input_list {
+                let mut contents = read_input_list(list, b'\t');
+                in_files.append(&mut contents);
+            }
+
             info!("Querying SBWT index...");
             println!("query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
             let stdout = std::io::stdout();
-            query_files.iter().for_each(|file| {
+            in_files.iter().for_each(|(file, path)| {
                 let mut run_lengths: Vec<(kbo::format::RLE, char, String, String, usize, usize)> = indexes.par_iter().map(|((sbwt, lcs), ref_contig, ref_bases)| {
-                    let mut reader = needletail::parse_fastx_file(file).expect("valid path/file");
+                    let mut reader = needletail::parse_fastx_file(path).ok().unwrap();
                     let mut res: Vec<(kbo::format::RLE, char, String, String, usize, usize)> = Vec::new();
                     while let Some(seqrec) = read_from_fastx_parser(&mut *reader) {
                         let query_contig = std::str::from_utf8(seqrec.id()).expect("UTF-8");

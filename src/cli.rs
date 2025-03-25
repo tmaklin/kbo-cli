@@ -106,9 +106,13 @@ pub enum Commands {
 
     // Find indexed k-mers in a query
     Find {
-        // Input fasta or fastq query file(s)
+        // Inputs
+        // // Input fasta or fastq query file(s)
         #[arg(group = "input", required = true)]
         query_files: Vec<String>,
+        // // Input list
+        #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input")]
+        input_list: Option<String>,
 
         // Reference
         // // Sequence file
