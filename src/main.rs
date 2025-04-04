@@ -244,10 +244,10 @@ fn main() {
 
             info!("Querying SBWT index...");
             if let Some(ofs) = &mut ofs {
-                let _ = ofs.write(b"query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
+                let _ = ofs.write(b"query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig\n");
             } else {
                 let stdout = std::io::stdout();
-                let _ = stdout.lock().write(b"query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig");
+                let _ = stdout.lock().write(b"query\tref\tq.start\tq.end\tstrand\tlength\tmismatches\tgap_bases\tgap_opens\tidentity\tcoverage\tquery.contig\tref.contig\n");
             }
             in_files.iter().for_each(|(file, path)| {
                 let mut run_lengths: Vec<(kbo::format::RLE, char, String, String, usize, usize)> = indexes.par_iter().map(|((sbwt, lcs), ref_contig, ref_bases)| {
