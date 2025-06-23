@@ -113,6 +113,46 @@ fn main() {
 
     // Subcommands:
     match &cli.command {
+
+        Some(cli::Commands::Align {
+            query_files,
+            input_list,
+            index_prefix,
+            output_file,
+            max_error_prob,
+            skip_gap_filling,
+            skip_variant_calling,
+            num_threads,
+            verbose,
+        }) => {
+            init_log(if *verbose { 2 } else { 1 });
+
+            let mut in_files = query_files.clone();
+            if let Some(list) = input_list {
+                let contents = read_input_list(list, b'\t');
+                let contents_iter = contents.iter().map(|(_, path)| path.to_str().unwrap().to_string());
+                in_files.extend(contents_iter);
+            }
+
+            info!("Loading SBWT index...");
+            let (sbwt, lcs) = kbo::index::load_sbwt(index_prefix.as_ref().unwrap());
+
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(*num_threads)
+                .thread_name(|i| format!("rayon-thread-{}", i))
+                .build()
+                .unwrap();
+
+            in_files.iter().for_each(|file| {
+                let mut reader = needletail::parse_fastx_file(file).ok().unwrap();
+                while let Some(seqrec) = read_from_fastx_parser(&mut *reader) {
+                    let query_contig = std::str::from_utf8(seqrec.id()).expect("UTF-8");
+                    let seq = seqrec.normalize(true);
+                    let res = kbo::find(&seq, &sbwt, &lcs, kbo::FindOpts::default());
+                }
+            });
+        },
+
         Some(cli::Commands::Build {
             seq_files,
             input_list,

@@ -25,6 +25,47 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    // Align reads to a prebuilt reference SBWT
+    Align {
+        // Input fasta or fastq query file(s)
+        #[arg(group = "input", required = true, help = "Sequence data file(s).")]
+        query_files: Vec<String>,
+
+        // Input options
+        // // Input list
+        #[arg(short = 'l', long = "input-list", group = "input", required = true, help_heading = "Input", help = "File with paths or tab separated name and path on each line.")]
+        input_list: Option<String>,
+        // Target prebuilt index
+        #[arg(short = 'i', long = "index", required = true, help_heading = "Input", help = "Prefix for prebuilt <prefix>.sbwt and <prefix>.lcs (excludes -r).")]
+        index_prefix: Option<String>,
+
+        // Output options
+        // // Output file
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output", help = "Write output to a file instead of printing.")]
+        output_file: Option<String>,
+
+        // Parameters
+        // // Upper bound for random match probability
+        #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm", help = "Tolerance for errors in k-mer matching.")]
+        max_error_prob: f64,
+        // // Skip gap filling
+        #[arg(long = "no-gap-filling", default_value_t = false, help_heading = "Algorithm", help = "Skip running the gap filling algorithm.")]
+        skip_gap_filling: bool,
+        // // Skip variant calling
+        #[arg(long = "no-variant-calling", default_value_t = false, help_heading = "Algorithm", help = "Skip using variant calling to improve the alignment.")]
+        skip_variant_calling: bool,
+
+        // Resources
+        // // Threads
+        #[arg(short = 't', long = "threads", default_value_t = 1)]
+        num_threads: usize,
+
+        // Verbosity
+        #[arg(long = "verbose", default_value_t = false)]
+        verbose: bool,
+    },
+
+
     // Build SBWT index
     Build {
         // Input fasta or fastq sequence file(s)
