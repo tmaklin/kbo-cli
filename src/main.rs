@@ -143,14 +143,64 @@ fn main() {
                 .build()
                 .unwrap();
 
+            let (k, threshold) = match sbwt {
+                sbwt::SbwtIndexVariant::SubsetMatrix(ref sbwt) => {
+                    (sbwt.k(), kbo::derandomize::random_match_threshold(sbwt.k(), sbwt.n_kmers(), 4_usize, *max_error_prob))
+                },
+            };
+
+            // These are required for the subcommand to work correctly
+            let mut sbwt_build_options = kbo::BuildOpts::default();
+            sbwt_build_options.add_revcomp = true;
+            sbwt_build_options.build_select = true;
+            sbwt_build_options.dedup_batches = false;
+            sbwt_build_options.k = k;
+            // These can be adjusted
+            sbwt_build_options.num_threads = *num_threads;
+
             in_files.iter().for_each(|file| {
                 let mut reader = needletail::parse_fastx_file(file).ok().unwrap();
                 while let Some(seqrec) = read_from_fastx_parser(&mut *reader) {
                     let query_contig = std::str::from_utf8(seqrec.id()).expect("UTF-8");
-                    let seq = seqrec.normalize(true);
-                    let res = kbo::find(&seq, &sbwt, &lcs, kbo::FindOpts::default());
+                    let query_seq = seqrec.normalize(true);
+
+                    // Move to lib.rs in core library if this works
+                    let noisy_ms = kbo::index::query_sbwt(&query_seq, &sbwt, &lcs);
+                    let derand_ms = kbo::derandomize::derandomize_ms_vec(&noisy_ms.iter().map(|x| x.0).collect::<Vec<usize>>(), k, threshold);
+
+                    let translation = kbo::translate::translate_ms_vec(&derand_ms, k, threshold);
+
+                    let refined = if !*skip_gap_filling {
+                        kbo::gap_filling::fill_gaps(&translation, &noisy_ms, &query_seq, &sbwt, threshold, *max_error_prob)
+                    } else {
+                        translation
+                    };
+
+                    let with_variants = if !*skip_variant_calling {
+                        let mut call_opts = kbo::CallOpts::default();
+                        call_opts.sbwt_build_opts = sbwt_build_options.clone();
+                        call_opts.max_error_prob = *max_error_prob;
+                        let variants = kbo::call(&sbwt, &lcs, &query_seq, call_opts);
+                        kbo::translate::add_variants(&refined, &variants)
+                    } else {
+                        refined
+                    };
+
+                    let stdout = std::io::stdout();
+                    let _ = writeln!(&mut stdout.lock(),
+                                     ">{}\n{}",
+                                     query_contig,
+                                     with_variants.iter().collect::<String>(),
+                    );
                 }
             });
+
+
+            // if map_opts.format {
+            //     kbo::format::relative_to_ref(&query_seq, &with_variants)
+            // } else {
+            //     with_variants.iter().map(|x| *x as u8).collect()
+            // }
         },
 
         Some(cli::Commands::Build {
