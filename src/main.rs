@@ -224,6 +224,8 @@ fn main() {
             sbwt_build_options.dedup_batches = *dedup_batches;
             sbwt_build_options.mem_gb = *mem_gb;
             sbwt_build_options.temp_dir = temp_dir.clone();
+            sbwt_build_options.add_revcomp = true;
+            sbwt_build_options.build_select = true;
 
             let mut in_files = seq_files.clone();
             if let Some(list) = input_list {
