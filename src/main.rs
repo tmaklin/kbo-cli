@@ -562,7 +562,7 @@ fn main() {
                     let noisy_ms: Vec<usize> = kbo::index::query_sbwt(&query_seq, &sbwt, &lcs).iter().map(|x| x.0).collect();
                     let res = kbo::derandomize::derandomize_ms_vec(&noisy_ms, k, threshold);
 
-                    let line: String = res.iter().map(|n| n.to_string()).collect::<Vec<String>>().join(", ");
+                    let line: String = res.iter().map(|n| n.to_string()).collect::<Vec<String>>().join(",");
                     if ofs.is_some() {
                         let _ = ofs.as_ref().unwrap().write_all(line.as_bytes());
                         let _ = ofs.as_ref().unwrap().write_all(b"\n");
