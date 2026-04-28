@@ -228,4 +228,51 @@ pub enum Commands {
         #[arg(long = "verbose", default_value_t = false)]
         verbose: bool,
     },
+
+    // Print the (cleaned) matching statistics and quit
+    Ms {
+        // Input fasta or fastq query file(s)
+        #[arg(group = "input", required = true, help = "Sequence data file(s).")]
+        query_files: Vec<String>,
+
+        // Input options
+        #[arg(short = 'i', long = "index", group = "reference", help_heading = "Input", help = "Prefix for prebuilt <prefix>.sbwt and <prefix>.lcs (excludes -r).")]
+        index_prefix: Option<String>,
+
+        // Output options
+        // // Output file
+        #[arg(short = 'o', long = "output", required = false, help_heading = "Output", help = "Write output to a file instead of printing.")]
+        output_file: Option<String>,
+
+        // Parameters
+        // // Upper bound for random match probability
+        #[arg(long = "max-error-prob", default_value_t = 0.0000001, help_heading = "Algorithm", help = "Tolerance for errors in k-mer matching.")]
+        max_error_prob: f64,
+
+        // Resources
+        // // Threads
+        #[arg(short = 't', long = "threads", default_value_t = 1)]
+        num_threads: usize,
+
+        // Build parameters
+        // // k-mer size
+        #[arg(short = 'k', default_value_t = 31, help_heading = "Build options", help = "k-mer size, larger values are slower and use more space.")]
+        kmer_size: usize,
+        // // prefix precalc
+        #[arg(short = 'p', long = "prefix-precalc", default_value_t = 8, help_heading = "Build options", help = "Length of precalculated prefixes included in the index.")]
+        prefix_precalc: usize,
+        // // deduplicate k-mer batches
+        #[arg(short = 'd', long = "dedup-batches", default_value_t = false, help_heading = "Build options", help = "Deduplicate k-mer batches to save some memory.")]
+        dedup_batches: bool,
+        // // Memory in GB
+        #[arg(short = 'm', long = "mem-gb", default_value_t = 4, help_heading = "Build options", help = "Memory available when building on temp disk space (in gigabytes).")]
+        mem_gb: usize,
+        // // Temporary directory
+        #[arg(long = "temp-dir", required = false, help_heading = "Build options", help = "Build on temporary disk space at this path instead of in-memory.")]
+        temp_dir: Option<String>,
+
+        // Verbosity
+        #[arg(long = "verbose", default_value_t = false)]
+        verbose: bool,
+    },
 }

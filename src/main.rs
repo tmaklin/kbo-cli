@@ -499,6 +499,81 @@ fn main() {
                 }
             });
         },
+        Some(cli::Commands::Ms {
+            query_files,
+            index_prefix,
+            output_file,
+            max_error_prob,
+            num_threads,
+            kmer_size,
+            prefix_precalc,
+            dedup_batches,
+            mem_gb,
+            temp_dir,
+            verbose,
+        }) => {
+            init_log(if *verbose { 2 } else { 1 });
+            let mut sbwt_build_options = kbo::BuildOpts::default();
+            // These are required for the subcommand to work correctly
+            sbwt_build_options.add_revcomp = true;
+            sbwt_build_options.build_select = true;
+            // These can be adjusted
+            sbwt_build_options.k = *kmer_size;
+            sbwt_build_options.num_threads = *num_threads;
+            sbwt_build_options.prefix_precalc = *prefix_precalc;
+            sbwt_build_options.dedup_batches = *dedup_batches;
+            sbwt_build_options.mem_gb = *mem_gb;
+            sbwt_build_options.temp_dir = temp_dir.clone();
+
+            let mut map_opts = kbo::MapOpts::default();
+            map_opts.max_error_prob = *max_error_prob;
+            map_opts.sbwt_build_opts = sbwt_build_options.clone();
+
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(*num_threads)
+                .thread_name(|i| format!("rayon-thread-{}", i))
+                .build()
+                .unwrap();
+
+            let mut in_files: Vec<(String, PathBuf)> = query_files.iter().map(|file| (file.clone(), PathBuf::from(file))).collect();
+
+            let ofs = if output_file.is_some() {
+                let ofs = match std::fs::File::create(output_file.as_ref().unwrap()) {
+                    Ok(file) => file,
+                    Err(e) => panic!("  Error in opening --output: {}", e),
+                };
+                Some(ofs)
+            } else {
+                None
+            };
+
+            info!("Loading SBWT index...");
+            let (sbwt, lcs) = kbo::index::load_sbwt(index_prefix.as_ref().unwrap());
+            let (k, threshold) = match sbwt {
+                sbwt::SbwtIndexVariant::SubsetMatrix(ref sbwt) => {
+                    (sbwt.k(), kbo::derandomize::random_match_threshold(sbwt.k(), sbwt.n_kmers(), 4_usize, *max_error_prob))
+                },
+            };
+
+            in_files.iter().for_each(|(file, path)| {
+                let mut reader = needletail::parse_fastx_file(file).unwrap_or_else(|_| panic!("Expected valid fastX file at {}", file));
+                while let Some(rec) = read_from_fastx_parser(&mut *reader) {
+                    let query_seq = rec.normalize(true);
+                    let noisy_ms: Vec<usize> = kbo::index::query_sbwt(&query_seq, &sbwt, &lcs).iter().map(|x| x.0).collect();
+                    let res = kbo::derandomize::derandomize_ms_vec(&noisy_ms, k, threshold);
+
+                    let line: String = res.iter().map(|n| n.to_string()).collect::<Vec<String>>().join(", ");
+                    if ofs.is_some() {
+                        let _ = ofs.as_ref().unwrap().write_all(line.as_bytes());
+                        let _ = ofs.as_ref().unwrap().write_all(b"\n");
+                    } else {
+                        let mut stdout = std::io::stdout();
+                        let _ = stdout.write_all(line.as_bytes());
+                        let _ = stdout.write_all(b"\n");
+                    }
+                }
+            });
+        },
         None => {}
     }
 }
